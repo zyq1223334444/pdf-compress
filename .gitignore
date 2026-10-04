@@ -6,6 +6,7 @@ build_standalone/
 dist/
 dist_installer/
 dist_unix/
+dist_macos/
 *.build/
 *.dist/
 *.onefile-build/
