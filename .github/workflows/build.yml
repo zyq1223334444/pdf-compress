@@ -1,0 +1,81 @@
+name: build-unix
+
+# Builds the Linux and macOS binaries with Nuitka.
+#
+# Why a CI workflow for this: Nuitka compiles Python to C and then calls the
+# platform's own linker, so a Linux binary must be built on Linux and a macOS
+# binary on macOS - there is no cross-compiling. The Windows machine that
+# develops this project can produce the Linux binaries through WSL, but it
+# cannot produce macOS ones at all, which is what this workflow is for.
+#
+# * Run it by hand (Actions -> build-unix -> Run workflow) to get the binaries
+#   as workflow artifacts.
+# * Push a tag such as v2.0.0 and it attaches them to that GitHub release.
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: ${{ matrix.tag }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            tag: linux_x86_64
+          - os: macos-15-intel
+            tag: macos_x86_64
+          - os: macos-15
+            tag: macos_arm64
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt nuitka zstandard
+
+      - name: Build with Nuitka
+        run: bash build_unix.sh
+
+      - name: Smoke test both builds
+        run: |
+          ./dist_unix/pdf_compress_${{ matrix.tag }} --help > /dev/null
+          ./dist_unix/pdf_compress_standalone/pdf_compress --help > /dev/null
+          ./dist_unix/pdf_compress_${{ matrix.tag }} --help-zh | head -3
+          echo "both builds start and print help"
+
+      - name: List artifacts
+        run: ls -lh dist_unix
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pdf-compress-${{ matrix.tag }}
+          path: |
+            dist_unix/pdf_compress_${{ matrix.tag }}
+            dist_unix/pdf_compress_${{ matrix.tag }}.tar.gz
+          if-no-files-found: error
+
+      - name: Attach to the release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view "${GITHUB_REF_NAME}" > /dev/null 2>&1 || \
+            gh release create "${GITHUB_REF_NAME}" \
+              --title "pdf_compress ${GITHUB_REF_NAME}" --generate-notes
+          gh release upload "${GITHUB_REF_NAME}" \
+            "dist_unix/pdf_compress_${{ matrix.tag }}" \
+            "dist_unix/pdf_compress_${{ matrix.tag }}.tar.gz" \
+            --clobber
