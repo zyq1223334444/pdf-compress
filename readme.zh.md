@@ -41,15 +41,52 @@ pip install pymupdf
 python pdf_compress.py <输入PDF路径> <目标大小(MB)> [选项]
 ```
 
-### 作为独立可执行文件运行
+### 方式一：安装包（Windows，推荐）
 
-`pdf_compress.exe` 由 Nuitka（Python → C → 机器码）编译，无需安装 Python 即可运行：
+到 [Releases](https://github.com/zyq1223334444/pdf-compress/releases) 下载
+**`pdf_compress_setup_2.0.0.exe`** 双击安装：
+
+- 装到 `C:\Program Files\pdf-compress`，带开始菜单快捷方式、**卸载程序**（"设置 → 应用"里也能卸载）
+- 可选把安装目录加入系统 `PATH`（默认勾选），之后任意终端直接敲 `pdf_compress`；
+  卸载时会把 `PATH` **逐字节还原**（安装前会先把原值备份进注册表）
+
+### 方式二：免安装（Windows 单文件 / 压缩包）
+
+| 下载 | 形态 | 实测启动 | Ctrl+C 退出码 |
+|---|---|---|---|
+| `pdf_compress.exe` | 单文件（约 26 MB，内置 PyMuPDF） | ≈2.5 s（每次要自解压） | `0xC000013A`（见下方说明） |
+| `pdf_compress_standalone_win64.zip` | 解压出一个文件夹 | ≈0.4 s | **130**，与源码版一致 |
 
 ```bash
 pdf_compress.exe <输入PDF路径> <目标大小(MB)> [选项]
 ```
 
-所有选项与脚本版本一致，多进程加速在 exe 中同样可用。
+> **单文件版的已知差异**：`--onefile` 在真正的程序外面还套了一层自解压引导进程（要解压内置的 PyMuPDF，
+> 所以启动也明显更慢）。按 Ctrl+C 时控制台事件同时送达两者，引导进程先退出，于是命令行看到的退出码是
+> `0xC000013A`（显示为 `-1073741510`）而不是 130。程序本身照常收尾：保留当时的最佳结果、清理临时目录、
+> 不留残余进程——**只有退出码不同**。
+
+### 方式三：Linux / macOS
+
+| 平台 | 单文件 | 文件夹版（含可执行权限，推荐） |
+|---|---|---|
+| Linux x86_64 | `pdf_compress_linux_x86_64` | `pdf_compress_linux_x86_64.tar.gz` |
+| macOS Intel | `pdf_compress_macos_x86_64` | `pdf_compress_macos_x86_64.tar.gz` |
+| macOS Apple Silicon | `pdf_compress_macos_arm64` | `pdf_compress_macos_arm64.tar.gz` |
+
+```bash
+tar -xzf pdf_compress_linux_x86_64.tar.gz
+./pdf_compress_standalone/pdf_compress doc.pdf 5
+```
+
+> macOS 上是**未签名**的二进制，首次运行可能被 Gatekeeper 拦下：
+> `xattr -d com.apple.quarantine <文件>`，或右键 → 打开。
+> Linux / macOS 的二进制由 GitHub Actions 在**真机**上构建（见 `.github/workflows/build.yml`），
+> 因为 Nuitka 把 Python 编译成 C 后要调用目标平台自己的链接器，**不支持交叉编译**。
+> 想自己构建：`bash build_unix.sh`（Linux 需要 gcc / patchelf）。
+
+三种形态都由 Nuitka（Python → C → 机器码）编译，无需安装 Python 即可运行；所有选项与脚本版本一致，
+多进程加速在二进制中同样可用（Linux/macOS 下自动按物理核数起进程）。
 
 ### 按固定分辨率渲染（不必给目标大小）
 
@@ -156,16 +193,28 @@ python pdf_compress.py mydoc.pdf 20 -j 4
 - 输出文件默认命名为 `<原文件名>_compressed.pdf`；临时文件集中在一个隐藏的临时目录里，
   正常结束/中断都会自动清理。
 
-## 从源码构建 exe（Nuitka）
+## 从源码构建（Nuitka）
 
-项目里带了 `build_exe.bat`，直接运行即可（自动编译并覆盖旧 exe，约 3 分钟）：
+| 想要什么 | 在哪构建 | 命令 |
+|---|---|---|
+| Windows 单文件 exe | Windows | `build_exe.bat`（自动覆盖旧 exe，约 3 分钟） |
+| Windows 文件夹版 | Windows | `build_exe_standalone.bat`（顺带打成 zip） |
+| Windows 安装包 | Windows | `build_installer.bat`（需要 Inno Setup 6.5+，见下） |
+| Linux / macOS 二进制 | **对应平台**（WSL / Mac / CI） | `bash build_unix.sh` |
 
-```bat
-build_exe.bat
-```
+> **为什么 Linux/macOS 不能在 Windows 上编**：Nuitka 把 Python 编译成 C，然后调用**目标平台自己的**
+> 编译器/链接器，没有交叉编译。本仓库用 GitHub Actions 在真机上构建 Linux 与两个 macOS 架构，
+> 见 `.github/workflows/build.yml`（也可以手动触发，或打 tag 时自动挂到 Release）。
 
-需要 C 编译器：**MSVC 14.3+**（Visual Studio 2022 Build Tools 或更新版本）。
+Windows 需要 C 编译器：**MSVC 14.3+**（Visual Studio 2022 Build Tools 或更新版本）。
 注意 Nuitka 在 Python 3.13 及以上**不能用 MinGW**，只能用 MSVC。
+
+安装包用 **Inno Setup 6.5+** 编译：`winget install --id JRSoftware.InnoSetup -e`。
+它在 `[Code]` 里做两件实测过的事：把安装目录加进系统 PATH 时**先把原值备份进注册表**，
+卸载时逐字节还原（用户的 PATH 可能以 `;` 结尾或含空项，纯字符串手术还原不干净）；
+以及卸载时删干净开始菜单、注册表卸载项与安装目录。
+
+`build_exe.bat` 它做的关键事情（脚本注释里有完整说明，都是实测踩出来的）：
 
 它做的关键事情（脚本注释里有完整说明，都是实测踩出来的）：
 

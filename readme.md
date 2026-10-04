@@ -43,15 +43,57 @@ pip install pymupdf
 python pdf_compress.py <INPUT_PDF> <TARGET_SIZE_MB> [OPTIONS]
 ```
 
-### As a standalone executable
+### Option 1: installer (Windows, recommended)
 
-`pdf_compress.exe` is compiled with Nuitka (Python → C → machine code) and needs no Python installation:
+Download **`pdf_compress_setup_2.0.0.exe`** from
+[Releases](https://github.com/zyq1223334444/pdf-compress/releases) and run it:
+
+- installs to `C:\Program Files\pdf-compress` with Start Menu shortcuts and a **proper uninstaller**
+  (it also shows up in Settings -> Apps)
+- optionally adds the install folder to the system `PATH` (checked by default) so `pdf_compress` works
+  from any terminal; the uninstaller **restores `PATH` byte-for-byte** (the original value is backed up
+  in the registry before the edit)
+
+### Option 2: no installation (Windows single file / zip)
+
+| Download | Shape | Startup (measured) | Exit code on Ctrl+C |
+|---|---|---|---|
+| `pdf_compress.exe` | single file (~26 MB, PyMuPDF inside) | ≈2.5 s (unpacks on every run) | `0xC000013A` (see below) |
+| `pdf_compress_standalone_win64.zip` | unzip into a folder | ≈0.4 s | **130**, same as the script |
 
 ```bash
 pdf_compress.exe <INPUT_PDF> <TARGET_SIZE_MB> [OPTIONS]
 ```
 
-All options are identical to the script version, and multi-process acceleration works in the exe as well.
+> **Known difference in the single-file build**: `--onefile` wraps the real program in a self-extracting
+> bootstrap process (and it has to unpack PyMuPDF, which is why startup is so much slower). A console
+> Ctrl+C reaches both, the bootstrap exits first, and the shell therefore sees `0xC000013A`
+> (`-1073741510`) instead of 130. The program itself still shuts down cleanly: it keeps the best result it
+> had, cleans its temp folder and leaves no stray process — only the exit code differs.
+
+### Option 3: Linux / macOS
+
+| Platform | Single file | Folder build (keeps the exec bit, recommended) |
+|---|---|---|
+| Linux x86_64 | `pdf_compress_linux_x86_64` | `pdf_compress_linux_x86_64.tar.gz` |
+| macOS Intel | `pdf_compress_macos_x86_64` | `pdf_compress_macos_x86_64.tar.gz` |
+| macOS Apple Silicon | `pdf_compress_macos_arm64` | `pdf_compress_macos_arm64.tar.gz` |
+
+```bash
+tar -xzf pdf_compress_linux_x86_64.tar.gz
+./pdf_compress_standalone/pdf_compress doc.pdf 5
+```
+
+> The macOS binaries are **unsigned**, so Gatekeeper may block the first run:
+> `xattr -d com.apple.quarantine <file>`, or right-click -> Open.
+> The Linux and macOS binaries are built on **real machines** by GitHub Actions
+> (see `.github/workflows/build.yml`), because Nuitka compiles Python to C and then calls the target
+> platform's own linker — there is no cross-compiling. To build them yourself: `bash build_unix.sh`
+> (needs gcc / patchelf on Linux).
+
+All three shapes are compiled with Nuitka (Python -> C -> machine code) and need no Python installation.
+Every option matches the script version, and multi-process acceleration works in the binaries too
+(on Linux/macOS the worker count is derived from the physical core count).
 
 ### Render at a fixed resolution (no target needed)
 
@@ -163,18 +205,31 @@ Every status line starts with a bracketed marker, which makes logs easy to read 
 - The output is named `<name>_compressed.pdf`; temporary files live in a hidden per-run directory and are removed
   on both normal completion and interruption.
 
-## Building the exe from source (Nuitka)
+## Building from source (Nuitka)
 
-The project ships `build_exe.bat` — just run it (rebuilds and replaces the exe, ~3 minutes):
+| What you want | Where to build it | Command |
+|---|---|---|
+| Windows single-file exe | Windows | `build_exe.bat` (rebuilds and replaces the exe, ~3 min) |
+| Windows folder build | Windows | `build_exe_standalone.bat` (also packs a zip) |
+| Windows installer | Windows | `build_installer.bat` (needs Inno Setup 6.5+, see below) |
+| Linux / macOS binaries | **the target platform** (WSL / Mac / CI) | `bash build_unix.sh` |
 
-```bat
-build_exe.bat
-```
+> **Why Linux/macOS cannot be built on Windows**: Nuitka compiles Python to C and then calls the
+> **target platform's own** compiler and linker — there is no cross-compiling. This repo uses GitHub
+> Actions to build Linux and both macOS architectures on real machines; see
+> `.github/workflows/build.yml` (run it by hand, or push a tag and the binaries are attached to the
+> release automatically).
 
-A C compiler is required: **MSVC 14.3+** (Visual Studio 2022 Build Tools or newer).
+On Windows a C compiler is required: **MSVC 14.3+** (Visual Studio 2022 Build Tools or newer).
 Note that Nuitka **cannot use MinGW with Python 3.13+**, MSVC only.
 
-What it does, and why (measured, not guessed — the full reasoning is in the script comments):
+The installer is compiled with **Inno Setup 6.5+**: `winget install --id JRSoftware.InnoSetup -e`.
+Its `[Code]` section does two things that were measured, not guessed: before adding the install folder
+to the system `PATH` it **backs the original value up in the registry** and restores it byte-for-byte on
+uninstall (a user's `PATH` may end in `;` or contain empty entries, which pure string surgery cannot undo
+cleanly), and it removes the Start Menu entries, the uninstall registry entry and the install folder.
+
+What `build_exe.bat` does, and why (measured, not guessed — the full reasoning is in the script comments):
 
 ```bat
 set VSLANG=1033                                  :: see (1) below

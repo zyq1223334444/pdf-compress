@@ -132,37 +132,75 @@ def physical_cpu_count() -> int:
 
     渲染是纯 CPU 密集型任务，用逻辑核数（含超线程）反而更慢：
     本项目实测 4 物理核的机器上 8 进程比 4 进程慢约 7%。
+
+    Windows: GetLogicalProcessorInformationEx 数 RelationProcessorCore。
+    Linux:   /proc/cpuinfo 里 (physical id, core id) 的唯一组合数。
+    macOS:   sysctl -n hw.physicalcpu。
+    都拿不到时才退回"逻辑核数 ÷ 2"这个旧启发式。
     """
-    try:
-        import ctypes
-        from ctypes import wintypes
+    if os.name == "nt":
+        try:
+            import ctypes
+            from ctypes import wintypes
 
-        fn = ctypes.windll.kernel32.GetLogicalProcessorInformationEx
-        fn.argtypes = [wintypes.DWORD, ctypes.c_void_p, ctypes.POINTER(wintypes.DWORD)]
-        fn.restype = wintypes.BOOL
+            fn = ctypes.windll.kernel32.GetLogicalProcessorInformationEx
+            fn.argtypes = [wintypes.DWORD, ctypes.c_void_p, ctypes.POINTER(wintypes.DWORD)]
+            fn.restype = wintypes.BOOL
 
-        length = wintypes.DWORD(0)
-        fn(0, None, ctypes.byref(length))          # 第一次调用只为取长度
-        if length.value == 0:
-            raise OSError("no data")
-        buf = ctypes.create_string_buffer(length.value)
-        if not fn(0, buf, ctypes.byref(length)):
-            raise OSError("GetLogicalProcessorInformationEx failed")
+            length = wintypes.DWORD(0)
+            fn(0, None, ctypes.byref(length))          # 第一次调用只为取长度
+            if length.value == 0:
+                raise OSError("no data")
+            buf = ctypes.create_string_buffer(length.value)
+            if not fn(0, buf, ctypes.byref(length)):
+                raise OSError("GetLogicalProcessorInformationEx failed")
 
-        cores = 0
-        offset = 0
-        while offset + 8 <= length.value:
-            relationship = wintypes.DWORD.from_buffer(buf, offset).value
-            size = wintypes.DWORD.from_buffer(buf, offset + 4).value
-            if size < 8:
-                break
-            if relationship == 0:                  # RelationProcessorCore
-                cores += 1
-            offset += size
-        if cores:
-            return cores
-    except Exception:
-        pass
+            cores = 0
+            offset = 0
+            while offset + 8 <= length.value:
+                relationship = wintypes.DWORD.from_buffer(buf, offset).value
+                size = wintypes.DWORD.from_buffer(buf, offset + 4).value
+                if size < 8:
+                    break
+                if relationship == 0:                  # RelationProcessorCore
+                    cores += 1
+                offset += size
+            if cores:
+                return cores
+        except Exception:
+            pass
+    else:
+        try:
+            if sys.platform == "darwin":
+                import subprocess
+
+                out = subprocess.run(["sysctl", "-n", "hw.physicalcpu"],
+                                     capture_output=True, text=True, timeout=5)
+                count = int((out.stdout or "").strip())
+                if count > 0:
+                    return count
+            else:
+                cores = set()
+                phys = core = None
+                with open("/proc/cpuinfo", "r", encoding="utf-8", errors="replace") as fh:
+                    for line in fh:
+                        if not line.strip():
+                            if phys is not None and core is not None:
+                                cores.add((phys, core))
+                            phys = core = None
+                            continue
+                        key, _, value = line.partition(":")
+                        key = key.strip()
+                        if key == "physical id":
+                            phys = value.strip()
+                        elif key == "core id":
+                            core = value.strip()
+                if phys is not None and core is not None:
+                    cores.add((phys, core))
+                if cores:
+                    return len(cores)
+        except Exception:
+            pass
     return max(1, logical_cpu_count() // 2)
 
 
