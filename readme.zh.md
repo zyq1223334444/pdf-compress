@@ -1,3 +1,5 @@
+> [🇬🇧 English](readme.md)
+
 # PDF Compressor（PDF 压缩工具）
 
 一款基于 PyMuPDF 的高性能 PDF 压缩工具，支持**无损优化**和**有损渲染压缩**，并利用**多核并行处理**加速。

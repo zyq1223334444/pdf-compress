@@ -1,3 +1,5 @@
+> [🇨🇳 中文](readme.zh.md)
+
 # PDF Compressor
 
 A high-performance PDF compression tool based on PyMuPDF, supporting **lossless optimisation**
