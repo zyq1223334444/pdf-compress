@@ -1,0 +1,11 @@
+# 统一换行：仓库内一律 LF，检出时按平台处理
+* text=auto eol=lf
+
+# Windows 批处理必须在检出时是 CRLF，否则个别 cmd 版本解析异常
+*.bat text eol=crlf
+
+# 二进制
+*.exe binary
+*.pdf binary
+*.png binary
+*.jpg binary

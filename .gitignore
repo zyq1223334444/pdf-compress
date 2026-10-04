@@ -1,0 +1,31 @@
+# ---- 编译产物（由 build_exe.bat 生成，可用脚本重建）----
+pdf_compress.exe
+build/
+dist/
+*.build/
+*.dist/
+*.onefile-build/
+pdf_compress.build/
+pdf_compress.dist/
+pdf_compress.onefile-build/
+
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+# ---- 编辑器 / 系统 ----
+.vs/
+.vscode/
+.idea/
+*.swp
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# ---- 本工具运行时的临时目录与默认输出 ----
+.pdf_compress_*/
+*_compressed.pdf
