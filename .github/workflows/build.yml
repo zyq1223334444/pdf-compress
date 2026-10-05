@@ -2,15 +2,19 @@ name: build-unix
 
 # Builds the Linux and macOS binaries with Nuitka.
 #
-# Why a CI workflow for this: Nuitka compiles Python to C and then calls the
-# platform's own linker, so a Linux binary must be built on Linux and a macOS
-# binary on macOS - there is no cross-compiling. The Windows machine that
-# develops this project can produce the Linux binaries through WSL, but it
-# cannot produce macOS ones at all, which is what this workflow is for.
+# Why CI at all: Nuitka compiles Python to C and then calls the target
+# platform's own compiler and linker, so a Linux binary has to be built on
+# Linux and a macOS binary on macOS - there is no cross-compiling. The Windows
+# machine that develops this project produces the Linux binaries through WSL,
+# but it cannot produce macOS ones at all, which is what this workflow is for.
 #
-# * Run it by hand (Actions -> build-unix -> Run workflow) to get the binaries
-#   as workflow artifacts.
-# * Push a tag such as v2.0.0 and it attaches them to that GitHub release.
+# The build logic lives in build/build_unix.sh, an ordinary part of the
+# repository; this file only supplies the three machines and publishes the
+# results. Everything the script writes goes to build/out/dist_unix/.
+#
+#   * Run it by hand (Actions -> build-unix -> Run workflow) to get the
+#     binaries as workflow artifacts.
+#   * Push a tag such as v2.0.0 and it attaches them to that GitHub release.
 
 on:
   workflow_dispatch:
@@ -47,24 +51,24 @@ jobs:
           python -m pip install -r requirements.txt nuitka zstandard
 
       - name: Build with Nuitka
-        run: bash build_unix.sh
+        run: bash build/build_unix.sh
 
       - name: Smoke test both builds
         run: |
-          ./dist_unix/pdf_compress_${{ matrix.tag }} --help > /dev/null
-          ./dist_unix/pdf_compress_standalone/pdf_compress --help > /dev/null
-          ./dist_unix/pdf_compress_${{ matrix.tag }} --help-zh | head -3
+          ./build/out/dist_unix/pdf_compress_${{ matrix.tag }} --help > /dev/null
+          ./build/out/dist_unix/pdf_compress_standalone/pdf_compress --help > /dev/null
+          ./build/out/dist_unix/pdf_compress_${{ matrix.tag }} --help-zh | head -3
           echo "both builds start and print help"
 
       - name: List artifacts
-        run: ls -lh dist_unix
+        run: ls -lh build/out/dist_unix
 
       - uses: actions/upload-artifact@v4
         with:
           name: pdf-compress-${{ matrix.tag }}
           path: |
-            dist_unix/pdf_compress_${{ matrix.tag }}
-            dist_unix/pdf_compress_${{ matrix.tag }}.tar.gz
+            build/out/dist_unix/pdf_compress_${{ matrix.tag }}
+            build/out/dist_unix/pdf_compress_${{ matrix.tag }}.tar.gz
           if-no-files-found: error
 
       - name: Attach to the release
@@ -76,6 +80,6 @@ jobs:
             gh release create "${GITHUB_REF_NAME}" \
               --title "pdf_compress ${GITHUB_REF_NAME}" --generate-notes
           gh release upload "${GITHUB_REF_NAME}" \
-            "dist_unix/pdf_compress_${{ matrix.tag }}" \
-            "dist_unix/pdf_compress_${{ matrix.tag }}.tar.gz" \
+            "build/out/dist_unix/pdf_compress_${{ matrix.tag }}" \
+            "build/out/dist_unix/pdf_compress_${{ matrix.tag }}.tar.gz" \
             --clobber

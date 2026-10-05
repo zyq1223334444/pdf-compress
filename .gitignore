@@ -1,19 +1,12 @@
-# ---- 编译产物（由 build_exe*.bat / build_unix.sh / build_installer.bat 生成，都可用脚本重建）----
-pdf_compress.exe
-pdf_compress_standalone_win64.zip
-build/
-build_standalone/
-dist/
-dist_installer/
-dist_unix/
-dist_macos/
+# ---- 编译产物 ----
+# 构建脚本本身在 build/（属于仓库内容），它们写出的东西全部落在 build/out/：
+# exe、zip、安装包、Nuitka 中间目录，都能用脚本随时重建。
+/build/out/
+
+# 兜底：万一手动在仓库根目录直接跑 Nuitka，这些中间目录同样不该进仓库
 *.build/
 *.dist/
 *.onefile-build/
-pdf_compress.build/
-pdf_compress.dist/
-pdf_compress.onefile-build/
-pdf_compress_standalone_win64/
 
 # ---- Python ----
 __pycache__/
