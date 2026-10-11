@@ -1,7 +1,7 @@
 """Generate the three MSIX tile images used by shell/AppxManifest.xml.
 
 The generated PNGs are checked in under shell/Resources, so a normal build of
-shell/build_shell_menu.bat never needs this script. It exists so the assets can
+build/windows/build_shell_menu.bat never needs this script. It exists so the assets can
 be regenerated from scratch (and to document how they were produced):
 
     python shell/make_assets.py --out shell/Resources

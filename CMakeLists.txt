@@ -41,7 +41,8 @@ if(NOT MUPDF_INCLUDE_DIR OR NOT MUPDF_LIBRARY)
         "找不到 MuPDF。请用 -DMUPDF_ROOT=<前缀> 指定，或安装发行版包：\n"
         "  Linux   sudo apt install libmupdf-dev\n"
         "  macOS   brew install mupdf\n"
-        "  Windows 用 build\\build_mupdf.bat 编译到 third_party/mupdf")
+        "  Windows 用 build\\windows\\build_mupdf.bat 编译到 third_party/mupdf\n"
+        "  Linux/macOS 用 build/unix/build_mupdf_unix.sh 编译到 build/out/mupdf-unix-prefix")
 endif()
 message(STATUS "MuPDF include: ${MUPDF_INCLUDE_DIR}")
 message(STATUS "MuPDF library: ${MUPDF_LIBRARY}")
@@ -66,7 +67,7 @@ set(PDFC_SOURCES
 )
 
 # 图形界面只用 Win32 + Direct2D 手绘，不引入 Qt/GTK 之类的框架。
-# 非 Windows 平台编译出的就是纯命令行版本，见 readme 的说明。
+# 非 Windows 平台编译出的就是纯命令行版本，见 README 的说明。
 if(WIN32)
     list(APPEND PDFC_SOURCES
         src/gui/theme.cpp
@@ -74,7 +75,7 @@ if(WIN32)
         src/gui/window.cpp
         src/gui/gui.cpp
         src/platform_win.cpp
-        build/app.rc            # 图标与版本资源，MSVC 的 CMake 会自动调 rc.exe
+        src/app.rc              # 图标与版本资源，MSVC 的 CMake 会自动调 rc.exe
     )
 else()
     list(APPEND PDFC_SOURCES
@@ -83,7 +84,7 @@ else()
     )
 endif()
 
-# 构建时生成的右键菜单载荷（shell/build_shell_menu.bat 写出）。
+# 构建时生成的右键菜单载荷（build/windows/build_shell_menu.bat 写出）。
 # 没生成过时用仓库自带的占位实现 src/shell_payload_default.cpp，于是"没有右键
 # 菜单组件的构建"照样能编出来 —— 关键是源文件列表里永远有且只有一份实现，
 # 否则干净 clone 出来的树会在链接阶段报找不到 kShellMsixHex。
@@ -102,7 +103,7 @@ add_executable(pdf-compress ${PDFC_SOURCES})
 set_target_properties(pdf-compress PROPERTIES OUTPUT_NAME pdf_compress)
 
 if(WIN32)
-    # rc.exe 解析 build/app.rc 里的相对路径时用的是它自己的 include 路径，
+    # rc.exe 解析 src/app.rc 里的相对路径时用的是它自己的 include 路径，
     # 不是 target_include_directories：靠这一行找到 assets\pdf_compress.ico。
     include_directories(${CMAKE_CURRENT_SOURCE_DIR})
 endif()
@@ -112,7 +113,20 @@ target_include_directories(pdf-compress PRIVATE
     ${MUPDF_INCLUDE_DIR}
 )
 
-target_link_libraries(pdf-compress PRIVATE ${MUPDF_LIBRARY})
+# MuPDF 从源码编译（build/unix/build_mupdf_unix.sh）时，第三方库是单独一个归档：
+# libmupdf.a 只有 MuPDF 自己的目标文件，zlib/freetype/harfbuzz 那些在
+# libmupdf-third.a 里，少链一个就是满屏 undefined reference。发行版包通常把两者
+# 合成一份，那就不会有这个文件，下面这段自然什么都不加。
+get_filename_component(MUPDF_LIBRARY_DIR "${MUPDF_LIBRARY}" DIRECTORY)
+set(MUPDF_EXTRA_LIBRARIES "")
+foreach(_mupdf_extra_name libmupdf-third.a libmupdf-third.so libmupdf-third.dylib)
+    if(EXISTS "${MUPDF_LIBRARY_DIR}/${_mupdf_extra_name}")
+        list(APPEND MUPDF_EXTRA_LIBRARIES "${MUPDF_LIBRARY_DIR}/${_mupdf_extra_name}")
+        message(STATUS "MuPDF third-party library: ${MUPDF_LIBRARY_DIR}/${_mupdf_extra_name}")
+    endif()
+endforeach()
+
+target_link_libraries(pdf-compress PRIVATE ${MUPDF_LIBRARY} ${MUPDF_EXTRA_LIBRARIES})
 
 if(WIN32)
     target_link_libraries(pdf-compress PRIVATE

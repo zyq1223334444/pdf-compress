@@ -1,22 +1,22 @@
 @echo off
 rem ===========================================================================
-rem  build\build_installer.bat
+rem  build\windows\build_installer.bat
 rem
-rem  Run:      build\build_installer.bat
+rem  Run:      build\windows\build_installer.bat
 rem  Produces: build\out\dist_installer\pdf_compress_setup_2.1.0.exe
 rem
-rem  It packages what build\build_exe.bat produced, never the cmake tree: the
-rem  staged folder under build\out\pdf_compress_win64 is exactly the set of
-rem  files the installed program needs (exe, MuPDF DLLs, the MSIX context menu
-rem  package and its certificate, readme, LICENSE). So run build_exe.bat first -
-rem  this script checks for the payload and says so if it is missing.
+rem  It packages what build\windows\build_exe.bat produced, never the cmake
+rem  tree: the staged folder under build\out\pdf_compress_win64 is exactly the
+rem  set of files the installed program needs (exe, MuPDF DLLs, the MSIX context
+rem  menu package and its certificate, README, LICENSE). So run build_exe.bat
+rem  first - this script checks for the payload and says so if it is missing.
 rem
 rem  Everything is relative to this folder:
-rem      payload    build\out\pdf_compress_win64
-rem      script     build\installer.iss
-rem      installer  build\out\dist_installer
-rem  installer.iss reaches back up to the repository root for readme.md,
-rem  readme.zh.md and LICENSE, which it ships next to the exe.
+rem      payload    ..\out\pdf_compress_win64
+rem      script     ..\installer\installer.iss
+rem      installer  ..\out\dist_installer
+rem  installer.iss reaches back up to the repository root for README.md,
+rem  README.zh-CN.md and LICENSE, which it ships next to the exe.
 rem
 rem  ---------------------------------------------------------------------
 rem  Requirement: Inno Setup 6.5+ (tested with 6.7.3)
@@ -29,8 +29,9 @@ rem ===========================================================================
 setlocal EnableExtensions
 
 set "HERE=%~dp0"
-for %%I in ("%~dp0..") do set "ROOT=%%~fI"
-set "OUT=%HERE%out"
+rem 这个脚本在 build\windows\ 里：仓库根是上两级，构建输出是上一级。
+for %%I in ("%~dp0..\..") do set "ROOT=%%~fI"
+set "OUT=%HERE%..\out"
 set "SRC_EXE=%OUT%\pdf_compress.exe"
 set "STAGE=%OUT%\pdf_compress_win64"
 
@@ -63,7 +64,7 @@ if exist "%OUT%\shell\pdf_compress_shell.msix" (
 ) else (
     echo [WARN] "%OUT%\shell\pdf_compress_shell.msix" not found.
     echo        The installer will still build, but its context menu task will
-    echo        do nothing. Run build\build_shell_menu.bat and build_exe.bat
+    echo        do nothing. Run build\windows\build_shell_menu.bat and build\windows\build_exe.bat
     echo        again to include it.
 )
 
@@ -83,7 +84,7 @@ goto :no_iscc
 :build
 echo [*] compiler       : %ISCC%
 echo [*] Compiling the installer ...
-"%ISCC%" "%HERE%installer.iss"
+"%ISCC%" "%HERE%..\installer\installer.iss"
 if errorlevel 1 goto :failed
 
 echo.
@@ -97,7 +98,7 @@ rem ===========================================================================
 :no_src
 echo [ERR] the executable is missing:
 echo       %SRC_EXE%
-echo       Run build\build_exe.bat first.
+echo       Run build\windows\build_exe.bat first.
 exit /b 1
 
 :stage_failed

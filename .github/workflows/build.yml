@@ -2,7 +2,7 @@ name: build-unix
 
 # Builds the Linux and macOS command line binaries with CMake.
 #
-# The build logic lives in build/build_unix.sh, an ordinary part of the
+# The build logic lives in build/unix/build_unix.sh, an ordinary part of the
 # repository; this file only supplies the machines and publishes the results.
 # The script writes its release folder to dist/<platform>/, and every
 # intermediate stays under build/out/cmake_unix/.
@@ -13,7 +13,7 @@ name: build-unix
 #
 # The Windows executable is NOT built here. It needs MSVC, the Windows SDK and
 # the MSIX tooling (makeappx/signtool) for the context menu package, so it is
-# built with build\build_exe.bat on a Windows machine.
+# built with build\windows\build_exe.bat on a Windows machine.
 
 on:
   workflow_dispatch:
@@ -40,21 +40,33 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # MuPDF is the PDF engine. Unlike the Python build there is no wheel that
-      # bundles it, so each runner installs the distribution package:
-      # CMakeLists.txt finds it through the normal system paths.
-      - name: Install MuPDF (Linux)
-        if: runner.os == 'Linux'
+      # MuPDF is the PDF engine. The distribution packages lag behind the API
+      # the sources use - Ubuntu 24.04 ships 1.23, whose JPEG encoder still
+      # takes three arguments where the sources pass four - so the same 1.26.0
+      # the Windows build uses is built here. It is also what makes the result
+      # a single self-contained binary: MuPDF is linked statically.
+      - name: Cache MuPDF
+        id: mupdf-cache
+        uses: actions/cache@v4
+        with:
+          path: build/out/mupdf-unix-prefix
+          key: mupdf-1.26.0-${{ runner.os }}-${{ runner.arch }}
+
+      - name: Build MuPDF 1.26.0 (Linux)
+        if: steps.mupdf-cache.outputs.cache-hit != 'true' && runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libmupdf-dev
+          sudo apt-get install -y build-essential curl
+          bash build/unix/build_mupdf_unix.sh
 
-      - name: Install MuPDF (macOS)
-        if: runner.os == 'macOS'
-        run: brew install mupdf
+      - name: Build MuPDF 1.26.0 (macOS)
+        if: steps.mupdf-cache.outputs.cache-hit != 'true' && runner.os == 'macOS'
+        run: bash build/unix/build_mupdf_unix.sh
 
       - name: Build with CMake
-        run: bash build/build_unix.sh
+        env:
+          MUPDF_ROOT: ${{ github.workspace }}/build/out/mupdf-unix-prefix
+        run: bash build/unix/build_unix.sh
 
       - name: Smoke test
         run: |

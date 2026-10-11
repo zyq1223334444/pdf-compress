@@ -8,14 +8,15 @@ rem  tools\fetch_mupdf.py downloads into third_party\mupdf\include. This
 rem  script exists to flush out syntax, type and API-signature mistakes
 rem  before the full dependency stack is in place.
 rem
-rem  Usage:  build\check_compile.bat [sources...]
+rem  Usage:  build\windows\check_compile.bat [sources...]
 rem          with no arguments it checks every source file.
 rem
 rem  Keep this file ASCII-only: cmd reads .bat with the OEM code page.
 rem =====================================================================
 setlocal
 set "HERE=%~dp0"
-cd /d "%HERE%.." || exit /b 1
+rem build\windows\ 的上两级才是仓库根。
+cd /d "%HERE%..\.." || exit /b 1
 set "ROOT=%CD%"
 set "OBJ=%TEMP%\pdfc_obj"
 if not exist "%OBJ%" mkdir "%OBJ%"

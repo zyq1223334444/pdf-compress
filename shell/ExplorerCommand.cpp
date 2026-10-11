@@ -379,7 +379,7 @@ extern "C" BOOL WINAPI DllMain(HINSTANCE module, DWORD reason, LPVOID)
 }
 
 // Exported through ExplorerCommand.def; checked with dumpbin /exports by
-// shell\build_shell_menu.bat.
+// build\windows\build_shell_menu.bat.
 STDAPI DllGetClassObject(REFCLSID rclsid, REFIID riid, void** ppv)
 {
     if (ppv == nullptr) {

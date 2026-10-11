@@ -1,12 +1,12 @@
 @echo off
 rem ===========================================================================
-rem  build\build_mupdf.bat
+rem  build\windows\build_mupdf.bat
 rem
 rem  Puts a usable MuPDF into third_party\mupdf, where CMakeLists.txt looks for
 rem  it automatically (it searches third_party/mupdf/include and
 rem  third_party/mupdf/lib unless -DMUPDF_ROOT points somewhere else).
 rem
-rem  Run:      build\build_mupdf.bat [version]
+rem  Run:      build\windows\build_mupdf.bat [version]
 rem  Produces: third_party\mupdf\include\mupdf\*.h
 rem            third_party\mupdf\lib\mupdf.lib   (+ third-party static libs)
 rem            third_party\mupdf\bin\*.dll       (release builds are DLLs)
@@ -38,7 +38,8 @@ rem ===========================================================================
 setlocal EnableExtensions EnableDelayedExpansion
 
 set "HERE=%~dp0"
-for %%I in ("%~dp0..") do set "ROOT=%%~fI"
+rem 这个脚本在 build\windows\ 里，所以仓库根是上两级。
+for %%I in ("%~dp0..\..") do set "ROOT=%%~fI"
 set "DEST=%ROOT%\third_party\mupdf"
 set "WORK=%ROOT%\build\out\mupdf"
 set "VERSION=%~1"
@@ -307,7 +308,7 @@ echo ===========================================================================
 echo   headers : %DEST%\include\mupdf
 echo   library : %DEST%\lib
 echo.
-echo   Next step: build\build_exe.bat
+echo   Next step: build\windows\build_exe.bat
 exit /b 0
 
 rem ===========================================================================

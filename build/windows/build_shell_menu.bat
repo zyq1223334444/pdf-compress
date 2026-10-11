@@ -1,6 +1,6 @@
 @echo off
 rem ===========================================================================
-rem  shell\build_shell_menu.bat
+rem  build\windows\build_shell_menu.bat
 rem
 rem  Builds the Windows 11 *top-level* File Explorer context menu integration:
 rem
@@ -35,8 +35,9 @@ rem makes the build logs comparable between machines.
 set "VSLANG=1033"
 
 set "PF86=%ProgramFiles(x86)%"
-set "SHELL_DIR=%~dp0"
-for %%I in ("%~dp0..") do set "ROOT=%%~fI"
+rem 这个脚本在 build\windows\ 里：仓库根是上两级，组件源码在 <root>\shell 下。
+for %%I in ("%~dp0..\..") do set "ROOT=%%~fI"
+set "SHELL_DIR=%ROOT%\shell"
 
 set "OUT=%ROOT%\build\out\shell"
 set "OBJ=%OUT%\obj"
@@ -48,8 +49,8 @@ set "PFX=%OUT%\pdf_compress_shell.pfx"
 set "PFXPW=PdfCompressShellTemp1"
 set "SRC_DIR=%ROOT%\src"
 set "PAYLOAD=%SRC_DIR%\shell_payload.cpp"
-set "PAYLOAD_SCRIPT=%SHELL_DIR%make_payload.py"
-set "RES_SRC=%SHELL_DIR%Resources"
+set "PAYLOAD_SCRIPT=%SHELL_DIR%\make_payload.py"
+set "RES_SRC=%SHELL_DIR%\Resources"
 set "RES_ASSETS=%ROOT%\assets"
 set "ICO=%RES_ASSETS%\pdf_compress.ico"
 
@@ -114,7 +115,7 @@ if defined RES_NEEDED (
     if errorlevel 1 goto :err_compile
 )
 
-cl /nologo /LD /O2 /MT /EHsc /utf-8 /DUNICODE /D_UNICODE /W4 /I"%SRC_DIR%" "%SHELL_DIR%ExplorerCommand.cpp" %RES_ARG% /link /OUT:"%DLL%" /DEF:"%DEF%" /PDB:"%OBJ%\ExplorerCommand.pdb" /IMPLIB:"%OBJ%\ExplorerCommand.lib" /INCREMENTAL:NO ole32.lib oleaut32.lib shell32.lib shlwapi.lib user32.lib advapi32.lib
+cl /nologo /LD /O2 /MT /EHsc /utf-8 /DUNICODE /D_UNICODE /W4 /I"%SRC_DIR%" "%SHELL_DIR%\ExplorerCommand.cpp" %RES_ARG% /link /OUT:"%DLL%" /DEF:"%DEF%" /PDB:"%OBJ%\ExplorerCommand.pdb" /IMPLIB:"%OBJ%\ExplorerCommand.lib" /INCREMENTAL:NO ole32.lib oleaut32.lib shell32.lib shlwapi.lib user32.lib advapi32.lib
 if errorlevel 1 goto :err_compile
 if not exist "%DLL%" goto :err_compile
 
@@ -132,7 +133,7 @@ rem    the other worker already produced matching PNGs.
 rem ---------------------------------------------------------------------------
 if not exist "%RES_SRC%\StoreLogo.png" if not exist "%RES_ASSETS%\StoreLogo.png" (
     echo [*] tile images missing, generating them with Pillow ...
-    python "%SHELL_DIR%make_assets.py" --out "%RES_SRC%"
+    python "%SHELL_DIR%\make_assets.py" --out "%RES_SRC%"
 )
 
 if exist "%STAGE%" rd /s /q "%STAGE%"
@@ -146,7 +147,7 @@ if errorlevel 1 goto :err_res
 call :copy_res Square44x44Logo.png
 if errorlevel 1 goto :err_res
 
-copy /y "%SHELL_DIR%AppxManifest.xml" "%STAGE%\AppxManifest.xml" >nul
+copy /y "%SHELL_DIR%\AppxManifest.xml" "%STAGE%\AppxManifest.xml" >nul
 if errorlevel 1 goto :err_stage
 copy /y "%DLL%" "%STAGE%\ExplorerCommand.dll" >nul
 if errorlevel 1 goto :err_stage
@@ -222,7 +223,7 @@ echo     1. Trust pdf_compress_shell.cer in Cert:\LocalMachine\TrustedPeople
 echo        (this build already did it for the current machine), otherwise
 echo        Add-AppxPackage fails with CERT_E_UNTRUSTEDROOT.
 echo     2. Rebuild the executable so src\shell_payload.cpp is compiled in:
-echo        build\build_exe.bat   (build_exe.bat calls this script first, so
+echo        build\windows\build_exe.bat   (that script calls this one first, so
 echo        normally you do not run this one by hand at all).
 echo     3. Register with:
 echo        pdf_compress.exe --install-menu
@@ -306,7 +307,7 @@ exit /b 1
 del /f /q "%PFX%" >nul 2>&1
 echo [ERR] writing "%PAYLOAD%" failed.
 echo       Make sure "python" is on PATH (python --version) and that
-echo       shell\make_payload.py is present next to this script.
+echo       shell\make_payload.py is present.
 echo       Without src\shell_payload.cpp the program still builds, but
 echo       --install-menu will report that this build has no context menu.
 exit /b 1

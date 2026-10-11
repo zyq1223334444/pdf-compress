@@ -1,23 +1,25 @@
-﻿; =====================================================================
+; =====================================================================
 ;  Inno Setup script for PDF Compressor (C++ / CMake build)
 ;
 ;  Normally you do not call this file directly - build_installer.bat does,
 ;  because it also stages the payload and locates ISCC.exe:
-;      build\build_installer.bat
+;      build\windows\build_installer.bat
 ;
 ;  To compile it by hand:
-;      "%LOCALAPPDATA%\Programs\Inno Setup 6\ISCC.exe" build\installer.iss
+;      "%LOCALAPPDATA%\Programs\Inno Setup 6\ISCC.exe" build\installer\installer.iss
 ;
 ;  Relative paths are resolved against the folder holding this script
-;  (build\), so every reference to a repository-root file starts with "..".
+;  (build\installer\), so repository-root files start with "..\.." and the
+;  build output one level up with "..".
 ;
-;      ..\readme.md, ..\readme.zh.md, ..\LICENSE    shipped next to the exe
-;      out\pdf_compress_win64                       the payload, staged by
+;      ..\..\README.md, ..\..\README.zh-CN.md       shipped next to the exe
+;      ..\..\LICENSE
+;      ..\out\pdf_compress_win64                    the payload, staged by
 ;                                                   build_installer.bat:
 ;                                                   pdf_compress.exe, the MuPDF
 ;                                                   DLLs and the context menu
 ;                                                   package (msix + cer)
-;      out\dist_installer                           the compiled setup .exe
+;      ..\out\dist_installer                        the compiled setup .exe
 ;
 ;  ChineseSimplified.isl sits next to this file and provides the Simplified
 ;  Chinese texts; the compiler's own Default.isl provides English.
@@ -46,7 +48,7 @@
 #define AppPublisher   "zyq1223334444"
 #define AppURL         "https://github.com/zyq1223334444/pdf-compress"
 #define ExeName        "pdf_compress.exe"
-#define SourceDir      "out\pdf_compress_win64"
+#define SourceDir      "..\out\pdf_compress_win64"
 
 [Setup]
 ; AppId identifies the application for upgrades/uninstall; never change it.
@@ -62,8 +64,8 @@ VersionInfoVersion={#AppVersion}
 DefaultDirName={autopf}\{#AppShortName}
 DefaultGroupName={#AppName}
 DisableProgramGroupPage=yes
-LicenseFile=..\LICENSE
-OutputDir=out\dist_installer
+LicenseFile=..\..\LICENSE
+OutputDir=..\out\dist_installer
 OutputBaseFilename=pdf_compress_setup_{#AppVersion}
 Compression=lzma2/max
 SolidCompression=yes
@@ -108,9 +110,9 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 
 [Files]
 Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
-Source: "..\readme.md"; DestDir: "{app}"; DestName: "readme.md"; Flags: ignoreversion
-Source: "..\readme.zh.md"; DestDir: "{app}"; DestName: "readme.zh.md"; Flags: ignoreversion
-Source: "..\LICENSE"; DestDir: "{app}"; DestName: "LICENSE"; Flags: ignoreversion
+Source: "..\..\README.md"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\..\README.zh-CN.md"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\..\LICENSE"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
 Name: "{group}\{#AppName}"; Filename: "{app}\{#ExeName}"

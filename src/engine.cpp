@@ -11,6 +11,9 @@
 #include "engine.hpp"
 
 #include <algorithm>
+// std::abs 的浮点重载由 <cmath> 提供；只靠 <cstdlib> 在部分编译器上拿到的是
+// 整数版本，误差比较会悄悄变成整数比较。
+#include <cmath>
 #include <csignal>
 #include <cstddef>
 #include <cstdio>

@@ -23,18 +23,19 @@ cmake_install.cmake
 *.exe
 
 # ---- 发布包 ----
-# build\package.bat（Windows）和 build\build_unix.sh（Linux/macOS）把要发出去
-# 的东西汇总到 dist\：几 MB 到几十 MB 的二进制，随时能用脚本重建，不进仓库。
+# build\windows\package.bat（Windows）和 build/unix/build_unix.sh（Linux/macOS）
+# 把要发出去的东西汇总到 dist\：几 MB 到几十 MB 的二进制，随时能用脚本重建。
+# 它们不进仓库正文，而是挂到 GitHub Release 上。
 /dist/
 
 # ---- 第三方依赖 ----
-# build\build_mupdf.bat 把编译好的 MuPDF 放这里（头和库都是几十 MB 的产物）。
+# build\windows\build_mupdf.bat 把编译好的 MuPDF 放这里（头和库都是几十 MB）。
 # 需要它的人跑一次那个脚本即可，不要把二进制提交进仓库。
 /third_party/
 
 # ---- 构建时生成的右键菜单载荷 ----
-# shell\build_shell_menu.bat 生成：里面是 MSIX 稀疏包和证书的十六进制字符串。
-# 证书每次构建都不一样，所以这个文件必须随构建重建，不能进仓库。
+# build\windows\build_shell_menu.bat 生成：里面是 MSIX 稀疏包和证书的十六进制
+# 字符串。证书每次构建都不一样，所以这个文件必须随构建重建，不能进仓库。
 # 它的占位版是 src/shell_payload_default.cpp —— 那一份要进仓库，CMake 在
 # 这份生成文件不存在时会退回去编译它。
 /src/shell_payload.cpp

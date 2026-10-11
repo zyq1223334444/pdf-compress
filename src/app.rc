@@ -12,7 +12,7 @@
 // 路径说明：rc.exe 解析 #include 与 ICON 的相对路径时，是以**这个 .rc 文件所在
 // 目录**为基准，并且还会在 /I 给出的附加目录里找。CMakeLists.txt 会把仓库根目录
 // 和 src\ 都加进 RC 的 include 目录，所以下面两种情况都能解析：
-//   * CMake 直接把本文件当源文件编译（build\ 里的这一份）；
+//   * CMake 直接把本文件当源文件编译（src\ 里的这一份）；
 //   * 手工把源文件复制到别处（例如 build\out\ 下的临时 .rc）再编译。
 
 #include <windows.h>

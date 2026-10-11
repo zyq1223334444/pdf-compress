@@ -3,12 +3,12 @@
 #  PDF Compressor -- Linux / macOS build (C++ / CMake)
 #
 #  Run *inside the target OS* (a container, a real Mac, CI):
-#      bash build/build_unix.sh
+#      bash build/unix/build_unix.sh
 #
 #  Produces, under <repo>/dist/<platform>/:
 #      pdf-compress_<ver>_<os>_<arch>/   the folder build
 #          pdf_compress                  the executable
-#          readme.md, readme.zh.md, LICENSE
+#          README.md, README.zh-CN.md, LICENSE
 #          <libmupdf.so...>              any non-system shared library it
 #                                        loads (a shared MuPDF build only)
 #
@@ -17,15 +17,17 @@
 #  release - tar it yourself if you want one.
 #
 #  ---------------------------------------------------------------------
-#  Directory contract. This script lives in build/, keeps every intermediate
-#  under build/out/, and writes the release folder to dist/. It resolves the
-#  repository root itself (one level up), so it can be started from any
-#  working directory.
+#  Directory contract. This script lives in build/unix/, keeps every
+#  intermediate under build/out/, and writes the release folder to dist/. It
+#  resolves the repository root itself (two levels up), so it can be started
+#  from any working directory.
 #
-#      build/          this script, installer.iss, the language file
+#      build/windows/  the Windows build and packaging scripts
+#      build/unix/     this script
+#      build/installer/installer.iss and the language file
 #      build/out/      every CMake intermediate
 #      dist/           the release folder (gitignored, like on Windows)
-#      <repo root>     CMakeLists.txt, src/, readme*.md
+#      <repo root>     CMakeLists.txt, src/, README*.md
 #
 #  ---------------------------------------------------------------------
 #  Dependencies
@@ -36,8 +38,9 @@
 #      macOS:         brew install cmake mupdf   (plus the Xcode command line tools)
 #
 #  MuPDF has to come from one of those packages (or from a prefix you point at
-#  with MUPDF_ROOT); unlike the Python build there is no wheel that bundles the
-#  engine. CMakeLists.txt stops with a readable message when it cannot find one.
+#  with MUPDF_ROOT). The packages lag behind the API these sources use, so
+#  build/unix/build_mupdf_unix.sh is the reliable route; CMakeLists.txt stops
+#  with a readable message when it cannot find any MuPDF at all.
 #
 #  ---------------------------------------------------------------------
 #  Why CI builds these and not the Windows machine: a Linux binary must be
@@ -47,9 +50,9 @@
 # =====================================================================
 set -euo pipefail
 
-HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"   # .../build
-ROOT="$(cd "$HERE/.." && pwd)"                         # repository root
-BUILD="$HERE/out/cmake_unix"
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"   # .../build/unix
+ROOT="$(cd "$HERE/../.." && pwd)"                      # repository root
+BUILD="$HERE/../out/cmake_unix"
 
 cd "$ROOT"
 
@@ -109,10 +112,27 @@ if [ ${#MUPDF_ARG[@]} -eq 0 ]; then
     elif [ -f /usr/include/mupdf/fitz.h ] || [ -f /usr/local/include/mupdf/fitz.h ]; then
         MUPDF_HINT="system headers found"
     else
-        MUPDF_HINT="not found - install libmupdf-dev (apt) / mupdf-devel (dnf) / mupdf (brew)"
+        MUPDF_HINT="not found - install libmupdf-dev (apt) / mupdf-devel (dnf) /"
+        MUPDF_HINT="$MUPDF_HINT mupdf (brew), or build the pinned one:"
+        MUPDF_HINT="$MUPDF_HINT bash build/unix/build_mupdf_unix.sh"
     fi
 fi
 echo "[*] MuPDF        : ${MUPDF_HINT:-looked up by CMake}"
+
+# The distribution packages lag behind the API the sources use (Ubuntu 24.04
+# ships 1.23; the JPEG encoder grew its quality argument in 1.25), so warn
+# rather than let the compiler produce four unrelated-looking errors.
+if [ -z "${MUPDF_ROOT:-}" ] && [ -f /usr/include/mupdf/fitz/version.h ]; then
+    SYSTEM_VERSION="$(sed -n 's/.*FZ_VERSION "\([0-9.]*\)".*/\1/p' \
+                      /usr/include/mupdf/fitz/version.h | head -1)"
+    case "${SYSTEM_VERSION:-}" in
+        1.2[0-4].*|1.1*.*|1.[0-9].*)
+            echo "[WARN] the system MuPDF is ${SYSTEM_VERSION}; these sources need 1.25+."
+            echo "       Build the pinned 1.26.0 instead:"
+            echo "         bash build/unix/build_mupdf_unix.sh"
+            ;;
+    esac
+fi
 
 # ---------------------------------------------------------------------
 # 1. Configure and build with CMake.
@@ -123,7 +143,10 @@ rm -rf "$BUILD"
 mkdir -p "$OUT"
 
 echo "[*] configuring ..."
-cmake -S "$ROOT" -B "$BUILD" -DCMAKE_BUILD_TYPE=Release "${MUPDF_ARG[@]}"
+# ${MUPDF_ARG[@]+"${MUPDF_ARG[@]}"} 而不是 "${MUPDF_ARG[@]}"：macOS 自带的是
+# bash 3.2，在 set -u 下展开一个空数组会直接报 "unbound variable"——CI 上的两个
+# macOS 任务就是这么挂的，而 Linux 的 bash 5 不会。
+cmake -S "$ROOT" -B "$BUILD" -DCMAKE_BUILD_TYPE=Release ${MUPDF_ARG[@]+"${MUPDF_ARG[@]}"}
 
 echo "[*] building ..."
 cmake --build "$BUILD" --config Release --parallel
@@ -146,7 +169,7 @@ cp "$PRODUCED" "$STAGE/pdf_compress"
 chmod +x "$STAGE/pdf_compress"
 
 # The same two documents and the licence the Windows folder build carries.
-cp "$ROOT/readme.md" "$ROOT/readme.zh.md" "$ROOT/LICENSE" "$STAGE/"
+cp "$ROOT/README.md" "$ROOT/README.zh-CN.md" "$ROOT/LICENSE" "$STAGE/"
 
 # ---------------------------------------------------------------------
 # 2. Copy the shared libraries the binary actually loads, if any.

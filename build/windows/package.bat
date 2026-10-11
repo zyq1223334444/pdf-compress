@@ -1,8 +1,8 @@
 @echo off
 rem ===========================================================================
-rem  build\package.bat
+rem  build\windows\package.bat
 rem
-rem  Run:      build\package.bat
+rem  Run:      build\windows\package.bat
 rem  Needs:    build\out\pdf_compress.exe                     (build_exe.bat)
 rem            build\out\dist_installer\pdf_compress_setup_<ver>.exe
 rem            (build_installer.bat - this script runs it when it is missing)
@@ -19,15 +19,17 @@ rem  context menu payload, so it runs on its own. Some people still want a
 rem  folder they can unpack anywhere, and some want an installer that writes
 rem  the Start Menu entries and registers the Explorer menu for them.
 rem
-rem  dist\ is gitignored. Release artefacts do not belong in the repository.
+rem  dist\ is gitignored. Release artefacts do not belong in the repository -
+rem  they are attached to a GitHub release instead.
 rem
 rem  Keep this file ASCII-only: cmd reads .bat files with the OEM code page.
 rem ===========================================================================
 setlocal EnableExtensions
 
 set "HERE=%~dp0"
-for %%I in ("%~dp0..") do set "ROOT=%%~fI"
-set "OUT=%HERE%out"
+rem 这个脚本在 build\windows\ 里：仓库根是上两级，构建输出是上一级。
+for %%I in ("%~dp0..\..") do set "ROOT=%%~fI"
+set "OUT=%HERE%..\out"
 set "DIST=%ROOT%\dist\windows"
 
 rem ---------------------------------------------------------------------------
@@ -69,9 +71,9 @@ mkdir "%STAGE%"
 copy /y "%OUT%\pdf_compress.exe" "%STAGE%\pdf_compress.exe" >nul
 if errorlevel 1 goto :err_copy
 
-copy /y "%ROOT%\readme.md"   "%STAGE%\readme.md"   >nul
-copy /y "%ROOT%\readme.zh.md" "%STAGE%\readme.zh.md" >nul
-copy /y "%ROOT%\LICENSE"     "%STAGE%\LICENSE"     >nul
+copy /y "%ROOT%\README.md"      "%STAGE%\README.md"      >nul
+copy /y "%ROOT%\README.zh-CN.md" "%STAGE%\README.zh-CN.md" >nul
+copy /y "%ROOT%\LICENSE"        "%STAGE%\LICENSE"        >nul
 
 rem A DLL build of MuPDF needs its DLLs next to the executable. The wildcard
 rem test keeps xcopy from printing "File not found" on a static build.
@@ -161,5 +163,5 @@ exit /b 1
 
 :err_installer
 echo [ERR] "%OUT%\dist_installer\%SETUP%" was not produced.
-echo       Run build\build_installer.bat and read its messages.
+echo       Run build\windows\build_installer.bat and read its messages.
 exit /b 1

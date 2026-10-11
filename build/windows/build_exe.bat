@@ -1,8 +1,8 @@
 @echo off
 rem ===========================================================================
-rem  build\build_exe.bat
+rem  build\windows\build_exe.bat
 rem
-rem  Run:      build\build_exe.bat
+rem  Run:      build\windows\build_exe.bat
 rem  Produces: build\out\pdf_compress.exe        the program
 rem            build\out\shell\*.msix / *.cer     (if the shell step ran)
 rem
@@ -19,10 +19,10 @@ rem   2. cmake configures with -DMUPDF_ROOT when a local build is present.
 rem      CMakeLists.txt would find third_party/mupdf on its own, but passing the
 rem      path explicitly makes the configure log say which MuPDF was used.
 rem   3. cmake --build builds Release. The application icon arrives through
-rem      build\app.rc, which CMakeLists.txt compiles via rc.exe.
+rem      src\app.rc, which CMakeLists.txt compiles via rc.exe.
 rem
 rem  Requirements:
-rem    * MuPDF       - run build\build_mupdf.bat first (or install vcpkg mupdf)
+rem    * MuPDF       - run build\windows\build_mupdf.bat first (or install vcpkg mupdf)
 rem    * MSVC 14.3+  - Visual Studio 2022 or the Build Tools
 rem    * CMake 3.16+ - https://cmake.org/download/ (or: winget install Kitware.CMake)
 rem
@@ -31,8 +31,9 @@ rem ===========================================================================
 setlocal EnableExtensions
 
 set "HERE=%~dp0"
-for %%I in ("%~dp0..") do set "ROOT=%%~fI"
-set "OUT=%HERE%out"
+rem 这个脚本在 build\windows\ 里，所以仓库根是上两级、构建输出是上一级。
+for %%I in ("%~dp0..\..") do set "ROOT=%%~fI"
+set "OUT=%HERE%..\out"
 set "BUILD=%OUT%\cmake"
 set "PF86=%ProgramFiles(x86)%"
 
@@ -48,18 +49,18 @@ if not exist "%OUT%" mkdir "%OUT%"
 rem ---------------------------------------------------------------------------
 rem 1. Context menu package (optional). It regenerates src\shell_payload.cpp.
 rem ---------------------------------------------------------------------------
-if exist "%ROOT%\shell\build_shell_menu.bat" (
+if exist "%HERE%build_shell_menu.bat" (
     echo [*] building the Explorer context menu package ...
-    call "%ROOT%\shell\build_shell_menu.bat"
+    call "%HERE%build_shell_menu.bat"
     if errorlevel 1 (
-        echo [WARN] shell\build_shell_menu.bat failed - the executable will be
+        echo [WARN] build_shell_menu.bat failed - the executable will be
         echo        built WITHOUT an embedded context menu. Deleting the stale
         echo        src\shell_payload.cpp so the fallback definitions are used.
         if exist "%ROOT%\src\shell_payload.cpp" del /f /q "%ROOT%\src\shell_payload.cpp" >nul 2>&1
     )
 ) else (
-    echo [WARN] shell\build_shell_menu.bat not found - building without an
-    echo        embedded context menu.
+    echo [WARN] build_shell_menu.bat not found next to this script - building
+    echo        without an embedded context menu.
 )
 
 rem ---------------------------------------------------------------------------
@@ -119,13 +120,13 @@ goto :mupdf_done
 
 :mupdf_incomplete
 echo [NOTE] third_party\mupdf has the headers but no lib\mupdf.lib - the tree
-echo        under it is a partial copy. Re-run: build\build_mupdf.bat
+echo        under it is a partial copy. Re-run: build\windows\build_mupdf.bat
 goto :mupdf_done
 
 :mupdf_system
 echo [NOTE] third_party\mupdf is empty. CMake will look for a MuPDF on the
 echo        system (vcpkg / a manual -DMUPDF_ROOT). If it is not found:
-echo          build\build_mupdf.bat
+echo          build\windows\build_mupdf.bat
 
 :mupdf_done
 
@@ -160,11 +161,11 @@ rem    The file is already called pdf_compress.exe: CMakeLists.txt sets
 rem    OUTPUT_NAME on the "pdf-compress" target precisely so that the build
 rem    product matches the name shell\AppxManifest.xml, the Start Menu shortcut
 rem    and the documentation all expect. The one thing left to do here is move
-rem    it out of the CMake tree into build\out\, where build_installer.bat and
+rem    it out of the CMake tree into build\out\, where build\windows\build_installer.bat and
 rem    the context-menu packaging look for it.
 rem
 rem    The application icon is NOT handled here either: it comes from
-rem    build\app.rc, which CMakeLists.txt adds to the target (MSVC's CMake runs
+rem    src\app.rc, which CMakeLists.txt adds to the target (MSVC's CMake runs
 rem    rc.exe itself).
 rem ---------------------------------------------------------------------------
 set "TARGET=%OUT%\pdf_compress.exe"
@@ -195,7 +196,7 @@ for %%F in ("%TARGET%") do echo   %%~fF  (%%~zF bytes)
 echo.
 echo   Run it              : "%TARGET%" --help
 echo   Install the menu    : "%TARGET%" --install-menu
-echo   Build the installer : build\build_installer.bat
+echo   Build the installer : build\windows\build_installer.bat
 exit /b 0
 
 rem ===========================================================================
@@ -224,7 +225,7 @@ exit /b 1
 :err_configure
 echo [ERR] CMake configure failed - see the messages above.
 echo       If it says "Cannot find MuPDF", run:
-echo         build\build_mupdf.bat
+echo         build\windows\build_mupdf.bat
 exit /b 1
 
 :err_build

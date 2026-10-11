@@ -14,6 +14,9 @@
 #include "pdf.hpp"
 
 #include <algorithm>
+// <cmath> 必须显式包含：std::sqrt 在 GCC 13（Ubuntu 24.04 的 CI 镜像）下不会
+// 从别的标准头里顺带带进来，而 MSVC 和更新的 GCC 会——少这一行只在 CI 上炸。
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <filesystem>

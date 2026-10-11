@@ -2,7 +2,7 @@
 //
 // 右键菜单载荷的**占位实现**，这份是仓库内容，永远跟着源码走。
 //
-// 真正的载荷是构建产物 src/shell_payload.cpp：shell/build_shell_menu.bat 把编出来的
+// 真正的载荷是构建产物 src/shell_payload.cpp：build/windows/build_shell_menu.bat 把编出来的
 // pdf_compress_shell.msix 与 .cer 编成两个十六进制字符串写进去（生成器是
 // shell/make_payload.py）。
 //

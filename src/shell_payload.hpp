@@ -2,7 +2,7 @@
 //
 // 构建时生成的右键菜单载荷声明。
 //
-// shell/build_shell_menu.bat 会产出 src/shell_payload.cpp，里面是两个**十六进制
+// build/windows/build_shell_menu.bat 会产出 src/shell_payload.cpp，里面是两个**十六进制
 // 字符串**常量：
 //
 //     kShellMsixHex   pdf_compress_shell.msix（已签名的 MSIX 稀疏包）
@@ -17,7 +17,7 @@
 // 定义这两个符号的文件有且只有一个，由 CMakeLists.txt 二选一：
 //   src/shell_payload.cpp          构建产物，不进仓库（见 .gitignore）
 //   src/shell_payload_default.cpp  仓库自带，两个空字符串
-// 于是"还没跑过 shell/build_shell_menu.bat"的检出也能直接编译通过，
+// 于是"还没跑过 build/windows/build_shell_menu.bat"的检出也能直接编译通过，
 // 此时 --install-menu 会说"这份构建没有带右键菜单"。这是一条正常路径，
 // 不是错误：便携版和纯命令行用户根本不需要那个组件。
 

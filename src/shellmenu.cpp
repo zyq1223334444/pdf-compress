@@ -27,7 +27,7 @@
 
 // 载荷（kShellMsixHex / kShellCerHex）的定义**只有一处**，由构建系统挑：
 //
-//   src/shell_payload.cpp          构建产物：shell/build_shell_menu.bat 把签名好的
+//   src/shell_payload.cpp          构建产物：build/windows/build_shell_menu.bat 把签名好的
 //                                  MSIX 与证书编成两个十六进制字符串写进去
 //   src/shell_payload_default.cpp  仓库自带：两个空字符串，--install-menu 会说
 //                                  "这份构建没有带右键菜单"

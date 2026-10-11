@@ -9,7 +9,8 @@
    `cl /c` 或 `g++ -fsyntax-only` 就能立刻发现对不上的地方，不必先把整个 MuPDF
    编译出来。
 2. **给只想要头文件的场景兜底**：真正的构建仍然需要 `libmupdf`，走
-   `build/build_mupdf.bat`（Windows）或发行版包（Linux/macOS）。
+   `build/windows/build_mupdf.bat`（Windows）、`build/unix/build_mupdf_unix.sh`
+   （Linux/macOS）或发行版包。
 
 走 `gh api`（GitHub CLI 已经带好了认证与代理），所以不受直连 GitHub 被重置的影响。
 
