@@ -322,6 +322,8 @@ std::vector<std::string> output_lines(const std::string& text) {
 /// zenity 的过滤串写法是"名字 | 通配符"。同样只有 Linux 分支用得到。
 [[maybe_unused]] std::string pdf_filter_zenity() {
     return std::string(tr("PDF 文件")) + " | *.pdf";
+}
+
 }  // namespace
 
 std::vector<std::string> choose_files(void* owner, const std::string& initial_dir) {
