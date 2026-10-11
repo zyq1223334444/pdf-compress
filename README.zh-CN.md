@@ -43,8 +43,8 @@
 | Windows | `pdf_compress_<版本>_win64.exe` | 单文件版，双击即用，不用解压 |
 | Windows | `pdf-compress-<版本>-win64.zip` | 同一个可执行文件 + 中英文 README + 许可证 |
 | Windows | `pdf_compress_setup_<版本>.exe` | 安装包：开始菜单、PATH、卸载程序、右键菜单 |
-| Linux | `pdf-compress_<版本>_linux_x86_64.tar.gz` | 命令行版 |
-| macOS | `pdf-compress_<版本>_macos_x86_64.tar.gz`、`..._macos_arm64.tar.gz` | Intel 与 Apple 芯片，只有命令行 |
+| Linux | `pdf-compress-linux_x86_64.tar.gz` | 命令行版（包里的文件夹名带版本号） |
+| macOS | `pdf-compress-macos_x86_64.tar.gz`、`pdf-compress-macos_arm64.tar.gz` | Intel 与 Apple 芯片，只有命令行 |
 
 Windows 那两个包里的可执行文件已经把 MuPDF 和右键菜单组件都装进去了，放到哪里都能单独跑。
 程序没有代码签名，SmartScreen 会拦一下，见[常见问题](#常见问题)。

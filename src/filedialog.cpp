@@ -266,7 +266,10 @@ std::string shell_quote(const std::string& text) {
 
 /// 这个外部程序在不在 PATH 上。用 `command -v` 而不是 `which`：后者在某些
 /// 精简发行版/容器里根本没装，而 command 是 shell 内建，一定有。
-bool command_exists(const std::string& name) {
+///
+/// 只有 Linux 分支用得到（它要挑 zenity/kdialog）；macOS 分支走 osascript，
+/// 于是在那边就是"定义了没人调"，clang 会报 -Wunused-function。
+[[maybe_unused]] bool command_exists(const std::string& name) {
     const std::string line = "command -v " + shell_quote(name) + " >/dev/null 2>&1";
     const int status = std::system(line.c_str());
     return status == 0;
@@ -316,11 +319,9 @@ std::vector<std::string> output_lines(const std::string& text) {
     return lines;
 }
 
-std::string pdf_filter_zenity() {
-    // zenity 的写法是"名字 | 通配符"
+/// zenity 的过滤串写法是"名字 | 通配符"。同样只有 Linux 分支用得到。
+[[maybe_unused]] std::string pdf_filter_zenity() {
     return std::string(tr("PDF 文件")) + " | *.pdf";
-}
-
 }  // namespace
 
 std::vector<std::string> choose_files(void* owner, const std::string& initial_dir) {

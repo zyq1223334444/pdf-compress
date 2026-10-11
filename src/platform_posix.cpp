@@ -71,7 +71,8 @@ std::string wide_to_utf8(const std::wstring& text) {
 std::string executable_dir() {
 #if defined(__APPLE__)
     // macOS 没有 /proc，官方的办法是问 dyld 要自己的路径。
-    // _NSGetExecutablePath 可能返回一个带 .. 的相对路径，所以先用 realpath 规范一次。    char stack_buffer[4096];
+    // _NSGetExecutablePath 可能返回一个带 .. 的相对路径，所以先用 realpath 规范一次。
+    char stack_buffer[4096];
     std::uint32_t size = sizeof(stack_buffer);
     std::string path;
     if (_NSGetExecutablePath(stack_buffer, &size) == 0) {

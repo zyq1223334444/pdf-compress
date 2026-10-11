@@ -52,8 +52,8 @@ Binaries are built by CI and attached there — they are deliberately **not** co
 | Windows | `pdf_compress_<ver>_win64.exe` | single file; run it, nothing to unpack |
 | Windows | `pdf-compress-<ver>-win64.zip` | the same executable plus the two READMEs and the licence |
 | Windows | `pdf_compress_setup_<ver>.exe` | installer: Start Menu entries, `PATH`, uninstaller, context menu |
-| Linux | `pdf-compress_<ver>_linux_x86_64.tar.gz` | the command line tool |
-| macOS | `pdf-compress_<ver>_macos_x86_64.tar.gz`, `..._macos_arm64.tar.gz` | Intel and Apple silicon, command line only |
+| Linux | `pdf-compress-linux_x86_64.tar.gz` | the command line tool (the folder inside carries the version) |
+| macOS | `pdf-compress-macos_x86_64.tar.gz`, `pdf-compress-macos_arm64.tar.gz` | Intel and Apple silicon, command line only |
 
 The executable in the Windows packages already contains MuPDF and the context menu component, so it
 runs on its own from anywhere. Windows SmartScreen will warn about an unsigned binary — see
