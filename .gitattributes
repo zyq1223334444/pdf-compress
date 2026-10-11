@@ -3,9 +3,25 @@
 
 # Windows 批处理必须在检出时是 CRLF，否则个别 cmd 版本解析异常
 *.bat text eol=crlf
+# Inno Setup 的脚本按 UTF-8 读，但保持 CRLF 在 Windows 工具里更顺手
+*.iss text eol=crlf
+
+# C/C++ 源码一律 LF（MSVC 与 GCC 都无所谓，统一了 diff 才干净）
+*.c   text eol=lf
+*.cc  text eol=lf
+*.cpp text eol=lf
+*.h   text eol=lf
+*.hpp text eol=lf
+*.rc  text eol=lf
 
 # 二进制
 *.exe binary
+*.dll binary
+*.lib binary
+*.msix binary
+*.cer binary
+*.pfx binary
+*.ico binary
 *.pdf binary
 *.png binary
 *.jpg binary

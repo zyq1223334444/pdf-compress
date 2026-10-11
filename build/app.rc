@@ -1,0 +1,71 @@
+// -*- coding: utf-8 -*-
+//
+// 主程序的 Windows 资源：图标 + 版本信息。
+//
+// 这个文件由 CMake 编译（在 CMakeLists.txt 的 WIN32 分支里作为源文件加进去，
+// MSVC 的 CMake 会自动调用 rc.exe），产物链接进 pdf_compress.exe：
+//   * 图标 —— 资源管理器里看到的 exe 图标，也是右键菜单项左侧那个图标
+//     （菜单项的 Icon 值是 "<exe>,0"，取的就是这里的第 0 号图标）。
+//     图标文件本身是 assets\pdf_compress.ico，由 assets\make_icon.py 画出。
+//   * 版本信息 —— 文件属性对话框里显示的那一页。
+//
+// 路径说明：rc.exe 解析 #include 与 ICON 的相对路径时，是以**这个 .rc 文件所在
+// 目录**为基准，并且还会在 /I 给出的附加目录里找。CMakeLists.txt 会把仓库根目录
+// 和 src\ 都加进 RC 的 include 目录，所以下面两种情况都能解析：
+//   * CMake 直接把本文件当源文件编译（build\ 里的这一份）；
+//   * 手工把源文件复制到别处（例如 build\out\ 下的临时 .rc）再编译。
+
+#include <windows.h>
+
+#include "resource.h"
+
+#define PDFC_ICON_PATH "assets\\pdf_compress.ico"
+
+// 版本号取自 CMake 的 project(... VERSION)：CMakeLists.txt 里的
+// add_compile_definitions(PDFC_VERSION="...") 对 RC 编译器同样生效。
+// 独立编译这个 .rc（没有经过 CMake）时才用下面的兜底值。
+#ifndef PDFC_VERSION
+#  define PDFC_VERSION "2.1.0"
+#endif
+
+// VERSIONINFO 的 FILEVERSION/PRODUCTVERSION 要的是 4 个数字，不是字符串，
+// 所以这里单独写一份，改版本号时和 CMakeLists.txt 的 project(... VERSION)
+// 一起改（CMake 不会为 RC 生成逗号分隔的数字）。
+#define PDFC_VERSION_COMMA 2,1,0,0
+
+// 图标。IDI_APPICON 就是 resource.h 里的 101。
+IDI_APPICON ICON PDFC_ICON_PATH
+
+// 版本信息。
+VS_VERSION_INFO VERSIONINFO
+    FILEVERSION PDFC_VERSION_COMMA
+    PRODUCTVERSION PDFC_VERSION_COMMA
+    FILEFLAGSMASK 0x3fL
+#ifdef _DEBUG
+    FILEFLAGS VS_FF_DEBUG
+#else
+    FILEFLAGS 0x0L
+#endif
+    FILEOS VOS_NT_WINDOWS32
+    FILETYPE VFT_APP
+    FILESUBTYPE 0x0L
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "080404b0"
+        BEGIN
+            VALUE "CompanyName",      "zyq1223334444"
+            VALUE "FileDescription",  "PDF Compressor - aim a PDF at a target size"
+            VALUE "FileVersion",      PDFC_VERSION
+            VALUE "InternalName",     "pdf_compress"
+            VALUE "LegalCopyright",   "MIT Licence"
+            VALUE "OriginalFilename", "pdf_compress.exe"
+            VALUE "ProductName",      "PDF Compressor"
+            VALUE "ProductVersion",   PDFC_VERSION
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x804, 1200
+    END
+END

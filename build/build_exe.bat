@@ -1,156 +1,241 @@
 @echo off
-rem =====================================================================
-rem  pdf_compress.exe -- single-file (onefile) Windows build
+rem ===========================================================================
+rem  build\build_exe.bat
 rem
 rem  Run:      build\build_exe.bat
-rem  Produces: build\out\pdf_compress.exe
+rem  Produces: build\out\pdf_compress.exe        the program
+rem            build\out\shell\*.msix / *.cer     (if the shell step ran)
 rem
-rem  ---------------------------------------------------------------------
-rem  Directory contract. Nothing is ever written outside build\out\.
+rem  Everything this script writes lives under build\out\, which is gitignored.
 rem
-rem      build\         these scripts, installer.iss, the language file
-rem      build\out\     every artefact and every Nuitka intermediate
-rem      <repo root>    pdf_compress.py, requirements.txt, readme*.md
+rem  Order of operations, and why:
 rem
-rem  The source therefore sits one level above this script: we cd into the
-rem  repository root first (Nuitka drops its cache next to the working
-rem  directory) and keep every path of our own absolute.
+rem   1. The Windows 11 context menu package is built FIRST. It produces
+rem      src\shell_payload.cpp, and the executable embeds that file, so building
+rem      the exe first would embed a stale (or missing) payload. A failure here
+rem      is only a warning: you then get an exe whose --install-menu says the
+rem      build has no context menu component.
+rem   2. cmake configures with -DMUPDF_ROOT when a local build is present.
+rem      CMakeLists.txt would find third_party/mupdf on its own, but passing the
+rem      path explicitly makes the configure log say which MuPDF was used.
+rem   3. cmake --build builds Release. The application icon arrives through
+rem      build\app.rc, which CMakeLists.txt compiles via rc.exe.
 rem
-rem  Nuitka compiles Python to C and then calls the platform's own linker,
-rem  so a build always happens on the target OS. This script is Windows
-rem  only; Linux and macOS are handled by build_unix.sh in this folder.
+rem  Requirements:
+rem    * MuPDF       - run build\build_mupdf.bat first (or install vcpkg mupdf)
+rem    * MSVC 14.3+  - Visual Studio 2022 or the Build Tools
+rem    * CMake 3.16+ - https://cmake.org/download/ (or: winget install Kitware.CMake)
 rem
-rem  ---------------------------------------------------------------------
-rem  Requirements
-rem
-rem      pip install nuitka zstandard pymupdf
-rem
-rem      A C compiler: MSVC 14.3+ (Visual Studio 2022 Build Tools or newer).
-rem      Nuitka cannot use MinGW together with Python 3.13 or newer - MSVC
-rem      only.
-rem
-rem  Keep this file ASCII-only: cmd reads .bat files with the OEM code page,
-rem  so UTF-8 text in here would be parsed as commands.
-rem
-rem  ---------------------------------------------------------------------
-rem  Why the flags below look unusual. Every one of them was measured on a
-rem  4-core / 16 GB machine - none of them is decoration.
-rem
-rem   VSLANG=1033
-rem     Nuitka's Scons backend decodes cl.exe output using the "mbcs" code
-rem     page, so a localized (Chinese) Visual Studio aborts the build with
-rem     "UnicodeDecodeError: 'mbcs' codec can't decode bytes". Forcing
-rem     English compiler messages sidesteps it.
-rem
-rem   --low-memory --lto=no
-rem     Letting Nuitka compile PyMuPDF makes it emit module.pymupdf.mupdf.c:
-rem     a single 122 MB / 2.35-million-line translation unit. With link time
-rem     optimisation MSVC dies on it with
-rem     "fatal error C1002: out of heap space" and "LNK1257".
-rem
-rem   --nofollow-import-to=pymupdf
-rem   --no-deployment-flag=excluded-module-usage
-rem   --include-data-files=<pymupdf>\*.py=pymupdf/   (plus *.pyd and *.dll)
-rem     Turning LTO off is not enough on its own: the optimiser oscillates
-rem     over that module for ~20 minutes and MSVC still has to swallow the
-rem     122 MB unit. Compiling only this project's own code and shipping
-rem     PyMuPDF verbatim avoids both problems, and takes the build from
-rem     ~50 minutes down to ~3 minutes with identical behaviour.
-rem
-rem   msvcp140.dll / python3.dll
-rem     PyMuPDF's _mupdf.pyd, _extra.pyd and mupdfcpp64.dll link against the
-rem     MSVC C++ runtime and against the CPython stable-ABI forwarder.
-rem     Nuitka ships the C runtime (vcruntime140.dll) but not those two, and
-rem     without them the exe dies with
-rem     "ImportError: DLL load failed while importing _extra".
-rem =====================================================================
-setlocal
+rem  Keep this file ASCII-only: cmd reads .bat files with the OEM code page.
+rem ===========================================================================
+setlocal EnableExtensions
+
 set "HERE=%~dp0"
-cd /d "%HERE%.." || goto no_root
-set "ROOT=%CD%"
+for %%I in ("%~dp0..") do set "ROOT=%%~fI"
 set "OUT=%HERE%out"
+set "BUILD=%OUT%\cmake"
+set "PF86=%ProgramFiles(x86)%"
+
+rem Visual Studio may be localized; keep the tool output in English so that the
+rem error paths below stay readable and comparable between machines.
 set "VSLANG=1033"
 
-where python >nul 2>&1
-if errorlevel 1 goto no_python
+echo [*] repository root : %ROOT%
+echo [*] output          : %OUT%
 
-if not exist "%ROOT%\pdf_compress.py" goto no_source
+if not exist "%OUT%" mkdir "%OUT%"
 
-rem locate site-packages and the Python installation
-set "SITE="
-for /f "delims=" %%i in ('python -c "import sysconfig;print(sysconfig.get_paths()['purelib'])"') do set "SITE=%%i"
-if not defined SITE goto no_python
-for /f "delims=" %%i in ('python -c "import sys;print(sys.base_prefix)"') do set "PYROOT=%%i"
+rem ---------------------------------------------------------------------------
+rem 1. Context menu package (optional). It regenerates src\shell_payload.cpp.
+rem ---------------------------------------------------------------------------
+if exist "%ROOT%\shell\build_shell_menu.bat" (
+    echo [*] building the Explorer context menu package ...
+    call "%ROOT%\shell\build_shell_menu.bat"
+    if errorlevel 1 (
+        echo [WARN] shell\build_shell_menu.bat failed - the executable will be
+        echo        built WITHOUT an embedded context menu. Deleting the stale
+        echo        src\shell_payload.cpp so the fallback definitions are used.
+        if exist "%ROOT%\src\shell_payload.cpp" del /f /q "%ROOT%\src\shell_payload.cpp" >nul 2>&1
+    )
+) else (
+    echo [WARN] shell\build_shell_menu.bat not found - building without an
+    echo        embedded context menu.
+)
 
-set "PKG=%SITE%\pymupdf"
-if not exist "%PKG%\mupdf.py" goto no_pymupdf
+rem ---------------------------------------------------------------------------
+rem 2. Toolchain checks: first Visual Studio (everything else hangs off it),
+rem    then CMake.
+rem ---------------------------------------------------------------------------
+set "VSWHERE=%PF86%\Microsoft Visual Studio\Installer\vswhere.exe"
+if not exist "%VSWHERE%" goto :err_vswhere
+set "VSPATH="
+for /f "usebackq delims=" %%I in (`"%VSWHERE%" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set "VSPATH=%%I"
+if not defined VSPATH goto :err_msvc
+if not exist "%VSPATH%\VC\Auxiliary\Build\vcvars64.bat" goto :err_msvc
+echo [*] MSVC           : %VSPATH%
 
-set "MSVCP=%SystemRoot%\System32\msvcp140.dll"
-if not exist "%MSVCP%" goto no_msvcp
-if not exist "%PYROOT%\python3.dll" goto no_python3
+rem CMake lives in four different places depending on how it was installed,
+rem and "not on PATH" is the normal case on a machine that only has the Visual
+rem Studio Build Tools - VS ships its own copy and does not put it on PATH.
+rem   1. PATH
+rem   2. Visual Studio's bundled copy (what the VS installer gives you)
+rem   3. the standalone installer's per-machine location
+rem   4. the standalone installer's per-user location
+set "CMAKE="
+for %%C in (cmake.exe) do if not defined CMAKE set "CMAKE=%%~$PATH:C"
+rem Visual Studio ships CMake under Common7\IDE\CommonExtensions, but only in
+rem the "IDE" editions - the plain Build Tools do not have it, and a machine can
+rem easily have both (that is exactly this one: BuildTools 2022 plus an Insiders
+rem install). So ask vswhere for *every* installation, not just the latest.
+rem -prerelease matters: without it vswhere hides preview/Insiders installs, and
+rem on this machine the only CMake around is the one inside VS Insiders.
+if not defined CMAKE (
+    for /f "usebackq delims=" %%I in (`"%VSWHERE%" -all -prerelease -products * -property installationPath`) do (
+        if not defined CMAKE if exist "%%I\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" set "CMAKE=%%I\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe"
+    )
+)
+if not defined CMAKE if exist "%ProgramFiles%\CMake\bin\cmake.exe" set "CMAKE=%ProgramFiles%\CMake\bin\cmake.exe"
+if not defined CMAKE if exist "%ProgramFiles(x86)%\CMake\bin\cmake.exe" set "CMAKE=%ProgramFiles(x86)%\CMake\bin\cmake.exe"
+if not defined CMAKE if exist "%LOCALAPPDATA%\Programs\CMake\bin\cmake.exe" set "CMAKE=%LOCALAPPDATA%\Programs\CMake\bin\cmake.exe"
+if not defined CMAKE goto :err_cmake
+rem Ask whichever cmake we ended up with; that covers "found but broken" too.
+"%CMAKE%" --version >nul 2>&1
+if errorlevel 1 goto :err_cmake
+echo [*] CMake          : %CMAKE%
 
-echo [*] repo root     : %ROOT%
-echo [*] output        : %OUT%
-echo [*] site-packages : %SITE%
-echo [*] python root   : %PYROOT%
-echo [*] Building pdf_compress.exe with Nuitka (takes about 3 minutes) ...
-python -m nuitka --standalone --onefile --msvc=latest ^
-    --low-memory --lto=no ^
-    --output-dir="%OUT%\nuitka_onefile" ^
-    --output-filename=pdf_compress.exe ^
-    --nofollow-import-to=pymupdf ^
-    --no-deployment-flag=excluded-module-usage ^
-    --include-data-files="%PKG%\*.py=pymupdf/" ^
-    --include-data-files="%PKG%\*.pyd=pymupdf/" ^
-    --include-data-files="%PKG%\*.dll=pymupdf/" ^
-    --include-data-files="%MSVCP%=msvcp140.dll" ^
-    --include-data-files="%PYROOT%\python3.dll=python3.dll" ^
-    --windows-console-mode=force ^
-    --company-name="PDF Compressor" ^
-    --product-name="PDF Compressor" ^
-    --file-version=2.0.0.0 --product-version=2.0.0.0 ^
-    --file-description="PDF compressor: aim a PDF at a target size" ^
-    "%ROOT%\pdf_compress.py"
-if errorlevel 1 goto build_failed
+rem ---------------------------------------------------------------------------
+rem 3. MuPDF. CMake stops with a readable message if it is missing; this check
+rem    exists to say which command to run before that happens.
+rem ---------------------------------------------------------------------------
+set "MUPDF_ARG="
+rem Two checks on purpose: third_party\mupdf can hold just the headers (the CMake
+rem configure would then fail later, at link time, with a much less obvious
+rem message). Both the header and the library have to be there to use it.
+if not exist "%ROOT%\third_party\mupdf\include\mupdf\fitz.h" goto :mupdf_system
+if not exist "%ROOT%\third_party\mupdf\lib\mupdf.lib" goto :mupdf_incomplete
+set "MUPDF_ARG=-DMUPDF_ROOT=%ROOT%\third_party\mupdf"
+echo [*] MuPDF          : %ROOT%\third_party\mupdf
+goto :mupdf_done
 
-copy /y "%OUT%\nuitka_onefile\pdf_compress.exe" "%OUT%\pdf_compress.exe" >nul
-if errorlevel 1 goto copy_failed
+:mupdf_incomplete
+echo [NOTE] third_party\mupdf has the headers but no lib\mupdf.lib - the tree
+echo        under it is a partial copy. Re-run: build\build_mupdf.bat
+goto :mupdf_done
+
+:mupdf_system
+echo [NOTE] third_party\mupdf is empty. CMake will look for a MuPDF on the
+echo        system (vcpkg / a manual -DMUPDF_ROOT). If it is not found:
+echo          build\build_mupdf.bat
+
+:mupdf_done
+
+rem ---------------------------------------------------------------------------
+rem 4. Configure and build.
+rem
+rem    -UMUPDF_LIBRARY -UMUPDF_INCLUDE_DIR: find_path/find_library put their result
+rem    into the cache, so a tree configured once keeps that answer forever. Move
+rem    or rebuild MuPDF and the next configure happily links the *old* library -
+rem    the worst version of this being a leftover stub .lib that links cleanly and
+rem    produces a program that crashes. Dropping just those two cache entries
+rem    makes CMake look the library up again while keeping every compiled object.
+rem ---------------------------------------------------------------------------
+echo [*] configuring with the Visual Studio 17 2022 generator ...
+"%CMAKE%" -S "%ROOT%" -B "%BUILD%" -G "Visual Studio 17 2022" -A x64 ^
+    -UMUPDF_LIBRARY -UMUPDF_INCLUDE_DIR %MUPDF_ARG%
+if errorlevel 1 goto :err_configure
+
+echo [*] building Release ...
+"%CMAKE%" --build "%BUILD%" --config Release --parallel
+if errorlevel 1 goto :err_build
+
+set "BUILT=%BUILD%\Release\pdf-compress.exe"
+if not exist "%BUILT%" set "BUILT=%BUILD%\Release\pdf_compress.exe"
+if not exist "%BUILT%" goto :err_nobinary
+echo [*] built binary   : %BUILT%
+
+rem ---------------------------------------------------------------------------
+rem 5. Copy the result into place.
+rem
+rem    The file is already called pdf_compress.exe: CMakeLists.txt sets
+rem    OUTPUT_NAME on the "pdf-compress" target precisely so that the build
+rem    product matches the name shell\AppxManifest.xml, the Start Menu shortcut
+rem    and the documentation all expect. The one thing left to do here is move
+rem    it out of the CMake tree into build\out\, where build_installer.bat and
+rem    the context-menu packaging look for it.
+rem
+rem    The application icon is NOT handled here either: it comes from
+rem    build\app.rc, which CMakeLists.txt adds to the target (MSVC's CMake runs
+rem    rc.exe itself).
+rem ---------------------------------------------------------------------------
+set "TARGET=%OUT%\pdf_compress.exe"
+
+if exist "%TARGET%" del /f /q "%TARGET%" >nul 2>&1
+copy /y "%BUILT%" "%TARGET%" >nul
+if errorlevel 1 goto :err_copy
+
+rem ---------------------------------------------------------------------------
+rem 6. MuPDF DLLs.
+rem
+rem    A DLL build of MuPDF needs its DLLs next to the executable, both to run
+rem    at all and for the MSIX sparse package, which resolves pdf_compress.exe
+rem    from this directory as its ExternalLocation. A static MuPDF build leaves
+rem    bin\ empty, and xcopy would then print "File not found - *.dll" at the
+rem    user for no reason - hence the wildcard test.
+rem ---------------------------------------------------------------------------
+if exist "%ROOT%\third_party\mupdf\bin\*.dll" (
+    echo [*] staging the MuPDF DLLs ...
+    xcopy /y /q "%ROOT%\third_party\mupdf\bin\*.dll" "%OUT%\" >nul
+)
 
 echo.
-echo [OK] single file: "%OUT%\pdf_compress.exe"
-echo      (the intermediate folder "%OUT%\nuitka_onefile" can be deleted)
+echo ===========================================================================
+echo  BUILD OK
+echo ===========================================================================
+for %%F in ("%TARGET%") do echo   %%~fF  (%%~zF bytes)
+echo.
+echo   Run it              : "%TARGET%" --help
+echo   Install the menu    : "%TARGET%" --install-menu
+echo   Build the installer : build\build_installer.bat
 exit /b 0
 
-:no_root
-echo [ERR] Could not enter the repository root from "%HERE%".
+rem ===========================================================================
+rem  Error paths
+rem ===========================================================================
+:err_cmake
+echo [ERR] cmake was not found.
+echo       Looked on PATH, in Visual Studio's own copy under "%VSPATH%",
+echo       and in the standalone installer's usual locations.
+echo       Install it with: winget install Kitware.CMake
+echo       or from https://cmake.org/download/  (3.16 or newer).
 exit /b 1
 
-:no_python
-echo [ERR] python not found on PATH.
+:err_vswhere
+echo [ERR] vswhere.exe was not found at:
+echo       "%VSWHERE%"
+echo       Install Visual Studio 2022 (or the Build Tools) with the
+echo       "Desktop development with C++" workload.
 exit /b 1
 
-:no_source
-echo [ERR] pdf_compress.py not found at "%ROOT%".
+:err_msvc
+echo [ERR] no Visual Studio installation with the x64 C++ toolset was found.
+echo       Install the "Desktop development with C++" workload, then re-run.
 exit /b 1
 
-:no_pymupdf
-echo [ERR] PyMuPDF not found in site-packages. Run: pip install pymupdf
+:err_configure
+echo [ERR] CMake configure failed - see the messages above.
+echo       If it says "Cannot find MuPDF", run:
+echo         build\build_mupdf.bat
 exit /b 1
 
-:no_msvcp
-echo [ERR] msvcp140.dll not found in %SystemRoot%\System32
-echo       Install the Microsoft Visual C++ Redistributable.
+:err_build
+echo [ERR] the build failed - see the compiler output above.
 exit /b 1
 
-:no_python3
-echo [ERR] python3.dll not found in %PYROOT%
+:err_nobinary
+echo [ERR] the build reported success but no executable was produced.
+echo       Expected "%BUILD%\Release\pdf-compress.exe".
 exit /b 1
 
-:build_failed
-echo [ERR] Nuitka build failed. Check that a C compiler (MSVC 14.3+) is installed;
-echo       Nuitka cannot use MinGW together with Python 3.13+.
-exit /b 1
-
-:copy_failed
-echo [ERR] Build finished but copying the exe into "%OUT%" failed.
+:err_copy
+echo [ERR] copying the executable to "%TARGET%" failed.
 exit /b 1

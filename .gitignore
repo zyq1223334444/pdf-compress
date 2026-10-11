@@ -1,14 +1,45 @@
 # ---- 编译产物 ----
 # 构建脚本本身在 build/（属于仓库内容），它们写出的东西全部落在 build/out/：
-# exe、zip、安装包、Nuitka 中间目录，都能用脚本随时重建。
+# exe、CMake 目录树、安装包、MuPDF 的下载与解压，都能用脚本随时重建。
 /build/out/
 
-# 兜底：万一手动在仓库根目录直接跑 Nuitka，这些中间目录同样不该进仓库
-*.build/
-*.dist/
-*.onefile-build/
+# 兜底：万一手动在仓库根目录直接跑 cmake，这些目录同样不该进仓库
+/build-*/
+/out/
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+*.vcxproj
+*.vcxproj.filters
+*.vcxproj.user
+*.sln
+*.obj
+*.res
+*.pdb
+*.ilk
+*.exp
+*.lib
+*.dll
+*.exe
 
-# ---- Python ----
+# ---- 发布包 ----
+# build\package.bat（Windows）和 build\build_unix.sh（Linux/macOS）把要发出去
+# 的东西汇总到 dist\：几 MB 到几十 MB 的二进制，随时能用脚本重建，不进仓库。
+/dist/
+
+# ---- 第三方依赖 ----
+# build\build_mupdf.bat 把编译好的 MuPDF 放这里（头和库都是几十 MB 的产物）。
+# 需要它的人跑一次那个脚本即可，不要把二进制提交进仓库。
+/third_party/
+
+# ---- 构建时生成的右键菜单载荷 ----
+# shell\build_shell_menu.bat 生成：里面是 MSIX 稀疏包和证书的十六进制字符串。
+# 证书每次构建都不一样，所以这个文件必须随构建重建，不能进仓库。
+# 它的占位版是 src/shell_payload_default.cpp —— 那一份要进仓库，CMake 在
+# 这份生成文件不存在时会退回去编译它。
+/src/shell_payload.cpp
+
+# ---- Python（构建脚本用得到：shell/make_payload.py、tools/*.py）----
 __pycache__/
 *.py[cod]
 *.egg-info/
@@ -24,6 +55,7 @@ env/
 Thumbs.db
 desktop.ini
 .DS_Store
+compile_commands.json
 
 # ---- 本工具运行时的临时目录与默认输出 ----
 .pdf_compress_*/

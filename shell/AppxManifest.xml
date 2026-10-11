@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Sparse (external-location) package for PDF Compressor.
+
+  This is the file that gets packed into pdf_compress_shell.msix. It gives the
+  unpackaged Win32 application package identity, which is what File Explorer
+  requires before it will show a command in the Windows 11 top-level context
+  menu, and it registers ExplorerCommand.dll as the IExplorerCommand
+  implementation for the ".pdf" shell item type.
+
+  Things a reviewer should not "clean up":
+    * Identity/@Publisher must match the signing certificate subject exactly
+      (CN=zyq1223334444) or Add-AppxPackage fails with a signature/identity
+      mismatch.
+    * com:SurrogateServer (not com:ExeServer, not InprocServer32) is what makes
+      the packaged COM registration discoverable by File Explorer.
+    * The package is packed with "makeappx /nv" because pdf_compress.exe lives
+      outside the package (uap10:AllowExternalContent) and cannot be validated.
+-->
+<Package
+  xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+  xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+  xmlns:uap10="http://schemas.microsoft.com/appx/manifest/uap/windows10/10"
+  xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+  xmlns:com="http://schemas.microsoft.com/appx/manifest/com/windows10"
+  xmlns:desktop4="http://schemas.microsoft.com/appx/manifest/desktop/windows10/4"
+  xmlns:desktop5="http://schemas.microsoft.com/appx/manifest/desktop/windows10/5"
+  IgnorableNamespaces="uap uap10 rescap com desktop4 desktop5">
+
+  <Identity
+    Name="zyq1223334444.PdfCompressShell"
+    Publisher="CN=zyq1223334444"
+    Version="1.0.0.0"
+    ProcessorArchitecture="neutral" />
+
+  <Properties>
+    <DisplayName>PDF Compressor</DisplayName>
+    <PublisherDisplayName>zyq1223334444</PublisherDisplayName>
+    <Logo>Resources\StoreLogo.png</Logo>
+    <uap10:AllowExternalContent>true</uap10:AllowExternalContent>
+  </Properties>
+
+  <Dependencies>
+    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.19041.0" MaxVersionTested="10.0.26100.0" />
+  </Dependencies>
+
+  <Capabilities>
+    <rescap:Capability Name="runFullTrust" />
+    <rescap:Capability Name="unvirtualizedResources" />
+  </Capabilities>
+
+  <Applications>
+    <Application
+      Id="PdfCompress"
+      Executable="pdf_compress.exe"
+      uap10:TrustLevel="mediumIL"
+      uap10:RuntimeBehavior="win32App">
+      <uap:VisualElements
+        AppListEntry="none"
+        DisplayName="PDF Compressor"
+        Description="PDF Compressor shell integration"
+        BackgroundColor="transparent"
+        Square150x150Logo="Resources\Square150x150Logo.png"
+        Square44x44Logo="Resources\Square44x44Logo.png" />
+      <Extensions>
+        <!-- The COM class is activated through the packaged surrogate, which is
+             the only registration File Explorer can see for a packaged app. -->
+        <com:Extension Category="windows.comServer">
+          <com:ComServer>
+            <com:SurrogateServer DisplayName="PDF Compressor shell command">
+              <!-- The schema type (ST_GUID) rejects braces, so the CLSID is
+                   written in its bare form here - same value as the
+                   __declspec(uuid(...)) in ExplorerCommand.cpp. -->
+              <com:Class
+                Id="9E7B2C41-5A64-4E1B-9C3D-2F7A8B1D4E60"
+                Path="ExplorerCommand.dll"
+                ThreadingModel="STA" />
+            </com:SurrogateServer>
+          </com:ComServer>
+        </com:Extension>
+        <!-- desktop5:ItemType Type=".pdf" scopes the verb to PDF files only. -->
+        <desktop4:Extension Category="windows.fileExplorerContextMenus">
+          <desktop4:FileExplorerContextMenus>
+            <desktop5:ItemType Type=".pdf">
+              <desktop5:Verb
+                Id="CompressWithPdfCompressor"
+                Clsid="9E7B2C41-5A64-4E1B-9C3D-2F7A8B1D4E60" />
+            </desktop5:ItemType>
+          </desktop4:FileExplorerContextMenus>
+        </desktop4:Extension>
+      </Extensions>
+    </Application>
+  </Applications>
+</Package>

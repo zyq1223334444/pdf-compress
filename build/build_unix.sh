@@ -1,77 +1,73 @@
 #!/usr/bin/env bash
 # =====================================================================
-#  PDF Compressor -- Linux / macOS build
+#  PDF Compressor -- Linux / macOS build (C++ / CMake)
 #
-#  Run *inside the target OS* (WSL, a container, a real Mac, CI):
+#  Run *inside the target OS* (a container, a real Mac, CI):
 #      bash build/build_unix.sh
 #
-#  Produces, all inside build/out/dist_unix/:
-#      pdf_compress                      single file (onefile)
-#      pdf_compress_<os>_<arch>          the same, renamed for the release
-#      pdf_compress_standalone/          folder build
-#      pdf_compress_<os>_<arch>.tar.gz   folder build, packed
+#  Produces, under <repo>/dist/<platform>/:
+#      pdf-compress_<ver>_<os>_<arch>/   the folder build
+#          pdf_compress                  the executable
+#          readme.md, readme.zh.md, LICENSE
+#          <libmupdf.so...>              any non-system shared library it
+#                                        loads (a shared MuPDF build only)
+#
+#  No archive: Windows ships a zip because a Windows folder is awkward to hand
+#  around, but on Linux and macOS the folder itself is the normal shape of a
+#  release - tar it yourself if you want one.
 #
 #  ---------------------------------------------------------------------
-#  Directory contract. This script lives in build/ and never writes outside
-#  build/out/. It resolves the repository root itself (one level up), so it
-#  can be started from any working directory.
+#  Directory contract. This script lives in build/, keeps every intermediate
+#  under build/out/, and writes the release folder to dist/. It resolves the
+#  repository root itself (one level up), so it can be started from any
+#  working directory.
 #
-#      build/         these scripts, installer.iss, the language file
-#      build/out/     every artefact and every Nuitka intermediate
-#      <repo root>    pdf_compress.py, requirements.txt, readme*.md
-#
-#  ---------------------------------------------------------------------
-#  Why there is no cross-compiling
-#
-#  Nuitka compiles Python to C and then calls the platform's own compiler
-#  and linker. A Linux binary must therefore be built on Linux and a macOS
-#  binary on macOS; a Windows machine can produce neither. The GitHub
-#  Actions workflow in .github/workflows/build.yml covers all three
-#  platform/arch combinations on real machines - run it by hand, or push a
-#  tag and the binaries are attached to that release automatically.
-#
-#  Requirements
-#      Debian/Ubuntu: sudo apt-get install -y python3-venv python3-dev gcc g++ patchelf
-#      macOS:         brew install python@3.13   (plus the Xcode command line tools)
-#      then:          python3 -m venv .venv && .venv/bin/pip install nuitka zstandard pymupdf
-#
-#  A virtualenv at <repo root>/.venv is picked up automatically when present.
-#  To use one that lives anywhere else, point PY at it explicitly:
-#      PY=/root/venv/bin/python bash build/build_unix.sh
+#      build/          this script, installer.iss, the language file
+#      build/out/      every CMake intermediate
+#      dist/           the release folder (gitignored, like on Windows)
+#      <repo root>     CMakeLists.txt, src/, readme*.md
 #
 #  ---------------------------------------------------------------------
-#  Why PyMuPDF is *not* compiled by Nuitka (same reasoning as build_exe.bat)
+#  Dependencies
 #
-#  pymupdf/mupdf.py expands into a single ~122 MB / 2.35-million-line C file.
-#  Nuitka's optimiser oscillates over it for ~20 minutes and gcc then has to
-#  swallow that translation unit. Compiling only our own code and shipping
-#  PyMuPDF verbatim is what keeps this build at minutes instead of an hour.
-#  Its .so files carry RUNPATH=$ORIGIN (and @loader_path on macOS), so they
-#  keep working as long as they stay in the same directory.
+#      Debian/Ubuntu: sudo apt-get install -y build-essential cmake libmupdf-dev
+#      Fedora:        sudo dnf install -y gcc-c++ cmake mupdf-devel
+#      Arch:          sudo pacman -S --needed base-devel cmake mupdf
+#      macOS:         brew install cmake mupdf   (plus the Xcode command line tools)
+#
+#  MuPDF has to come from one of those packages (or from a prefix you point at
+#  with MUPDF_ROOT); unlike the Python build there is no wheel that bundles the
+#  engine. CMakeLists.txt stops with a readable message when it cannot find one.
+#
+#  ---------------------------------------------------------------------
+#  Why CI builds these and not the Windows machine: a Linux binary must be
+#  built on Linux and a macOS binary on macOS. See
+#  .github/workflows/build.yml, which runs this very script on real machines
+#  and attaches the results to a release when a tag is pushed.
 # =====================================================================
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"   # .../build
 ROOT="$(cd "$HERE/.." && pwd)"                         # repository root
-OUT="$HERE/out/dist_unix"
-SOURCE="$ROOT/pdf_compress.py"
+BUILD="$HERE/out/cmake_unix"
 
 cd "$ROOT"
 
-if [ ! -f "$SOURCE" ]; then
-    echo "[ERR] pdf_compress.py not found at $SOURCE"
+# 版本号从 CMakeLists.txt 里读，和 Windows 的 package.bat 用同一个来源，
+# 免得两边各写一份再慢慢对不上。
+VERSION="$(sed -n 's/^project(pdf-compress VERSION \([0-9][0-9.]*\).*/\1/p' \
+           "$ROOT/CMakeLists.txt" | head -1)"
+VERSION="${VERSION:-0.0.0}"
+
+if [ ! -f "$ROOT/CMakeLists.txt" ]; then
+    echo "[ERR] CMakeLists.txt not found at $ROOT"
     exit 1
 fi
 
-PY="${PY:-python3}"
-if [ -x "$ROOT/.venv/bin/python" ]; then
-    PY="$ROOT/.venv/bin/python"
-fi
-
-# Fail with a readable message instead of letting the checks below traceback.
-if ! "$PY" -c 'import nuitka' > /dev/null 2>&1; then
-    echo "[ERR] nuitka is not installed for $PY"
-    echo "      Run: $PY -m pip install nuitka zstandard"
+if ! command -v cmake > /dev/null 2>&1; then
+    echo "[ERR] cmake is not installed."
+    echo "      Debian/Ubuntu: sudo apt-get install -y cmake"
+    echo "      macOS:         brew install cmake"
     exit 1
 fi
 
@@ -81,79 +77,158 @@ case "$(uname -s)" in
     *) echo "[ERR] unsupported OS: $(uname -s)"; exit 1 ;;
 esac
 case "$(uname -m)" in
-    x86_64|amd64) ARCH=x86_64 ;;
+    x86_64|amd64)  ARCH=x86_64 ;;
     arm64|aarch64) ARCH=arm64 ;;
     *) ARCH="$(uname -m)" ;;
 esac
 TAG="${PLATFORM}_${ARCH}"
 
-echo "[*] repo root : $ROOT"
-echo "[*] target    : $PLATFORM / $ARCH"
-echo "[*] python    : $($PY -V 2>&1)"
-echo "[*] nuitka    : $($PY -m nuitka --version 2>&1 | head -1)"
-
-PKG="$("$PY" -c 'import os, pymupdf; print(os.path.dirname(pymupdf.__file__))' 2>/dev/null || true)"
-if [ -z "$PKG" ] || [ ! -f "$PKG/mupdf.py" ]; then
-    echo "[ERR] PyMuPDF not found for $PY"
-    echo "      Run: $PY -m pip install pymupdf"
-    exit 1
+# Optional: point CMake at a MuPDF prefix that is not in the default search path.
+MUPDF_ARG=()
+if [ -n "${MUPDF_ROOT:-}" ]; then
+    MUPDF_ARG=(-DMUPDF_ROOT="$MUPDF_ROOT")
+    echo "[*] MuPDF prefix : $MUPDF_ROOT"
 fi
-echo "[*] pymupdf   : $PKG"
 
-rm -rf "$OUT"
+echo "[*] repo root    : $ROOT"
+echo "[*] version      : $VERSION"
+echo "[*] target       : $PLATFORM / $ARCH"
+echo "[*] cmake        : $(cmake --version | head -1)"
+
+# The release folder. Named the same way as the Windows one so that a user who
+# downloads both can tell them apart at a glance.
+OUT="$ROOT/dist/$PLATFORM"
+STAGE="$OUT/pdf-compress_${VERSION}_${TAG}"
+
+# A MuPDF that CMake cannot find is by far the most common failure here, so
+# say what to install before CMake gets the chance to fail cryptically.
+MUPDF_HINT=""
+if [ ${#MUPDF_ARG[@]} -eq 0 ]; then
+    if pkg-config --exists mupdf 2>/dev/null; then
+        MUPDF_HINT="pkg-config: $(pkg-config --modversion mupdf)"
+    elif [ -f /usr/include/mupdf/fitz.h ] || [ -f /usr/local/include/mupdf/fitz.h ]; then
+        MUPDF_HINT="system headers found"
+    else
+        MUPDF_HINT="not found - install libmupdf-dev (apt) / mupdf-devel (dnf) / mupdf (brew)"
+    fi
+fi
+echo "[*] MuPDF        : ${MUPDF_HINT:-looked up by CMake}"
+
+# ---------------------------------------------------------------------
+# 1. Configure and build with CMake.
+# ---------------------------------------------------------------------
+# A fresh configure each run: the repository is small and this avoids the
+# classic "the cache still points at a MuPDF that is gone" trap.
+rm -rf "$BUILD"
 mkdir -p "$OUT"
 
-# Only pass the data-file patterns that actually match something: Nuitka
-# treats a non-matching --include-data-files glob as a FATAL error ("does not
-# match any files"), and which extensions exist differs per OS
-# (Linux: .so + .so.28.2, macOS: .so + .dylib, Windows: .pyd + .dll).
-DATA_ARGS=()
-for pat in '*.py' '*.pyd' '*.so' '*.so.*' '*.dylib' '*.dll' 'py.typed'; do
-    if compgen -G "$PKG/$pat" > /dev/null; then
-        DATA_ARGS+=("--include-data-files=$PKG/$pat=pymupdf/")
-    fi
-done
-echo "[*] pymupdf data patterns: ${#DATA_ARGS[@]}"
+echo "[*] configuring ..."
+cmake -S "$ROOT" -B "$BUILD" -DCMAKE_BUILD_TYPE=Release "${MUPDF_ARG[@]}"
 
-COMMON=(
-    --assume-yes-for-downloads
-    --nofollow-import-to=pymupdf
-    --no-deployment-flag=excluded-module-usage
-    --company-name="zyq1223334444"
-    --product-name="PDF Compressor"
-    --product-version=2.0.0
-    --file-version=2.0.0
-    --file-description="PDF compressor: aim a PDF at a target size"
-)
+echo "[*] building ..."
+cmake --build "$BUILD" --config Release --parallel
 
-echo "[*] building the single-file (onefile) binary ..."
-"$PY" -m nuitka --standalone --onefile \
-    "${COMMON[@]}" "${DATA_ARGS[@]}" \
-    --output-dir="$OUT" \
-    --output-filename=pdf_compress \
-    "$SOURCE"
+# CMakeLists.txt defines the target "pdf-compress", so the file it produces is
+# named with a hyphen. Everything user facing (documentation, the MSIX
+# manifest, the Windows build) says pdf_compress; ship it under that name.
+PRODUCED="$BUILD/pdf-compress"
+if [ ! -x "$PRODUCED" ]; then
+    PRODUCED="$BUILD/pdf_compress"
+fi
+if [ ! -x "$PRODUCED" ]; then
+    echo "[ERR] the build reported success but no executable was produced in $BUILD"
+    exit 1
+fi
 
-echo "[*] building the standalone folder ..."
-"$PY" -m nuitka --standalone \
-    "${COMMON[@]}" "${DATA_ARGS[@]}" \
-    --output-dir="$OUT/standalone" \
-    --output-filename=pdf_compress \
-    "$SOURCE"
-
-STAGE="$OUT/pdf_compress_standalone"
 rm -rf "$STAGE"
-mv "$OUT/standalone/pdf_compress.dist" "$STAGE"
-rm -rf "$OUT/standalone"
+mkdir -p "$STAGE"
+cp "$PRODUCED" "$STAGE/pdf_compress"
+chmod +x "$STAGE/pdf_compress"
 
-cp "$OUT/pdf_compress" "$OUT/pdf_compress_${TAG}"
-chmod +x "$OUT/pdf_compress" "$OUT/pdf_compress_${TAG}" "$STAGE/pdf_compress"
+# The same two documents and the licence the Windows folder build carries.
+cp "$ROOT/readme.md" "$ROOT/readme.zh.md" "$ROOT/LICENSE" "$STAGE/"
 
-echo "[*] packing the folder build ..."
-tar -C "$OUT" -czf "$OUT/pdf_compress_${TAG}.tar.gz" pdf_compress_standalone
+# ---------------------------------------------------------------------
+# 2. Copy the shared libraries the binary actually loads, if any.
+#
+#    On Linux and macOS the distribution packages build MuPDF as a shared
+#    library; a MuPDF built as a static library leaves the executable
+#    self-contained and everything below copies nothing. ldd/otool tells us
+#    which of those libraries are not in a system location, which is exactly
+#    the set a user would otherwise have to install by hand - so libraries
+#    from /lib, /usr/lib and the multiarch directories are skipped. Copying
+#    libc.so.6 into the folder would look thorough and help nobody.
+#
+#    The count is written to a file (not captured from stdout) so that the
+#    function can be called normally instead of in a command substitution.
+# ---------------------------------------------------------------------
+COUNT_FILE="$BUILD/.bundled_count"
+
+copy_deps() {
+    local binary="$1"
+    local libraries=""
+
+    if [ "$PLATFORM" = "linux" ]; then
+        libraries="$(ldd "$binary" 2>/dev/null | awk '/=> \//{print $3}' | sort -u \
+            | grep -vE '^/(lib|usr/lib|lib64|usr/lib64)/' || true)"
+    else
+        # Homebrew libraries live under /opt/homebrew or /usr/local; skip the
+        # ones every Mac already has in /usr/lib and /System.
+        libraries="$(otool -L "$binary" 2>/dev/null \
+            | awk 'NR>1 {print $1}' \
+            | grep -E '^/opt/homebrew|^/usr/local' | sort -u || true)"
+    fi
+
+    local copied=0
+    for library in $libraries; do
+        [ -f "$library" ] || continue
+        cp -f "$library" "$STAGE/" || true
+        # Follow the symlink chain: libmupdf.so -> libmupdf.so.24.9 etc. Copy
+        # the real file too, otherwise the loader cannot resolve the soname.
+        local resolved
+        resolved="$(readlink -f "$library" 2>/dev/null || true)"
+        if [ -n "$resolved" ] && [ -f "$resolved" ] && [ "$resolved" != "$library" ]; then
+            cp -f "$resolved" "$STAGE/" || true
+        fi
+        copied=$((copied + 1))
+    done
+    printf '%s' "$copied" > "$COUNT_FILE"
+}
+
+if [ "$PLATFORM" = "linux" ] && command -v ldd > /dev/null 2>&1; then
+    copy_deps "$STAGE/pdf_compress"
+    echo "[*] bundled $(cat "$COUNT_FILE") shared librar(y|ies) next to the binary"
+elif [ "$PLATFORM" = "macos" ] && command -v otool > /dev/null 2>&1; then
+    copy_deps "$STAGE/pdf_compress"
+    echo "[*] bundled $(cat "$COUNT_FILE") shared librar(y|ies) next to the binary"
+fi
+rm -f "$COUNT_FILE"
+
+# ---------------------------------------------------------------------
+# 3. Smoke test: the binary must start and print its help.
+#
+#    Output goes to a file, not into a pipe to head, so a SIGPIPE can never be
+#    mistaken for a crash (the exit code is checked).
+# ---------------------------------------------------------------------
+echo "[*] smoke test: --help"
+HELP_FILE="$BUILD/help_smoke.txt"
+if ! "$STAGE/pdf_compress" --help > "$HELP_FILE" 2>&1; then
+    echo "[ERR] the freshly built binary failed to run:"
+    sed 's/^/      /' "$HELP_FILE"
+    exit 1
+fi
+if [ ! -s "$HELP_FILE" ]; then
+    echo "[ERR] --help produced no output - the binary is probably broken."
+    exit 1
+fi
+head -3 "$HELP_FILE" | sed 's/^/      /'
+rm -f "$HELP_FILE"
 
 echo
-echo "[OK] artifacts:"
-ls -lh "$OUT" | sed 's/^/     /'
+echo "[OK] release folder:"
+ls -lh "$STAGE" | sed 's/^/     /'
 echo
-echo "     $OUT/pdf_compress_${TAG}                 (single file)"
-echo "     $OUT/pdf_compress_${TAG}.tar.gz          (folder, packed)"
+echo "     $STAGE"
+echo
+echo "     There is no graphical interface on Linux/macOS: this build is the"
+echo "     command line tool only."
