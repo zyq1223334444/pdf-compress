@@ -1,15 +1,19 @@
 # -*- coding: utf-8 -*-
 
-"""把 Python 版的英文文案表转成 C++ 的 strings_en.cpp。
+"""把 Python 原型的英文文案表转成 C++ 的 src/strings_en.cpp。
 
-中文是这个项目的源语言，英文表以中文原文为键。C++ 版和 Python 版用的是同一套
-键，所以这份表直接由 lang_en.py 生成，而不是手抄一遍——抄一遍必然会漂移。
+中文是这个项目的源语言，英文表以中文原文为键。C++ 版当初和 Python 版用的是同一套
+键，所以这份表是由 lang_en.py 生成、而不是手抄的——抄一遍必然会漂移。
+
+生成结果 src/strings_en.cpp 是提交进仓库的普通源码，而且**现在就是权威版本**：
+Python 原型已经不在这个仓库里，函数式用法只是给"手边还留着那份原型"的维护者同步用。
 
 用法（在 C++ 工程根目录）：
     python tools/make_strings_en.py [path/to/lang_en.py]
 
-默认路径指向同仓库里的 Python 实现：../../python/pdf-compress/pdfcomp/lang_en.py
-生成的文件是提交进仓库的普通源码，这个脚本只是方便以后同步。
+默认路径指向同级的 Python 实现：../../python/pdf-compress/pdfcomp/lang_en.py
+缺了它这个脚本会直接退出——日常改文案请直接改 src/strings_en.cpp，或者把只有 C++
+用到的条目补进 src/strings_en_extra.cpp（tools/check_i18n.py 会告诉你缺哪些）。
 """
 
 import ast

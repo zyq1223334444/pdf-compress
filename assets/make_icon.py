@@ -2,9 +2,9 @@
 
 """生成应用图标（assets/pdf_compress.ico）。
 
-图标是构建产物也是源资产：exe 的图标（Nuitka --windows-icon-from-ico）和
-右键菜单 DLL 的图标资源（build/windows/build_shell_menu.bat 里的 .rc）都读这一个
-文件，所以它进仓库，脚本留在这里保证以后能重新生成。
+图标是构建产物也是源资产：exe 的图标（src/app.rc 里 IDI_APPICON 指向的就是本文件
+的产物）和右键菜单 DLL 的图标资源（build/windows/build_shell_menu.bat 里的 .rc）
+都读这一个文件，所以它进仓库，脚本留在这里保证以后能重新生成。
 
 画的是一个圆角方块底 + 白纸 + 三条越来越短的线（"被压扁的文档"）。
 小尺寸下细节会糊，所以线条要少、要粗。

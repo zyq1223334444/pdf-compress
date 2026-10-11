@@ -2,16 +2,16 @@
 
 """检查 C++ 源码里的 tr("...") 文案与英文表是否一致。
 
-英文表（src/strings_en.cpp）是从 Python 版的 pdfcomp/lang_en.py 生成的，所以
-真正要防的是另一件事：**C++ 代码里新写的 tr("中文") 有没有对应的英文**。
-漏了不会崩，只会在英文界面下悄悄显示中文——正是那种"上线几个月后才被发现"
-的问题，所以用脚本扫一遍。
+英文表有两张，都在 src/ 里：strings_en.cpp（最初由 Python 原型的 lang_en.py 生成，
+现在就是权威版本）和 strings_en_extra.cpp（只服务 C++ 侧的补充条目）。真正要防的是
+另一件事：**C++ 代码里新写的 tr("中文") 有没有对应的英文**。漏了不会崩，只会在英文
+界面下悄悄显示中文——正是那种"上线几个月后才被发现"的问题，所以用脚本扫一遍。
 
     python tools/check_i18n.py
 
 四条检查：
   1. C++ 里用到、英文表里没有的文案      -> 漏翻，必须补
-  2. 英文表里有、C++ 里没用到的文案      -> 只是提示（可能这条只在 Python 版用）
+  2. 英文表里有、C++ 里没用到的文案      -> 只是提示（多半是历史遗留条目）
   3. 占位符名字两边对不上的              -> 英文版会缺参数
   4. 含中文、却没包 tr(...) 的字符串字面量 -> 英文界面下必然原样显示中文
 
@@ -32,6 +32,10 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 SRC = os.path.join(ROOT, "src")
+# 权威的英文表就是仓库里这份生成的 C++ 文件。
+TABLE_EN = os.path.join(SRC, "strings_en.cpp")
+# 它最初来自 Python 原型的 lang_en.py，那份代码已经不在本仓库里；只有在旁边还
+# 留着 Python 版、想核对"生成的表有没有被手改过"时才需要它。
 PY_TABLE = os.path.normpath(
     os.path.join(ROOT, "..", "..", "python", "pdf-compress", "pdfcomp", "lang_en.py"))
 
@@ -236,6 +240,23 @@ def load_extra_table(path):
     return table
 
 
+def load_cpp_table(path):
+    """从生成的 strings_en.cpp / strings_en_extra.cpp 里抠出 {中文, 英文} 对。"""
+    if not os.path.isfile(path):
+        return {}
+    with io.open(path, encoding="utf-8") as handle:
+        text = handle.read()
+    table = {}
+    for match in PAIR_PATTERN.finditer(text):
+        key = "".join(cpp_string_literal(part)
+                      for part in ANY_LITERAL.findall(match.group(1)))
+        value = "".join(cpp_string_literal(part)
+                        for part in ANY_LITERAL.findall(match.group(2)))
+        if key:
+            table[key] = value
+    return table
+
+
 def load_python_table(path):
     with io.open(path, encoding="utf-8") as handle:
         tree = ast.parse(handle.read(), path)
@@ -253,11 +274,16 @@ def placeholders(text):
 
 
 def main():
-    if not os.path.isfile(PY_TABLE):
-        raise SystemExit("找不到英文表：%s" % PY_TABLE)
+    # 优先读仓库里这份 C++ 表，所以这个检查在干净 clone 上就能跑；只有它缺失时
+    # 才退回去找 Python 原型的表。
+    if os.path.isfile(TABLE_EN):
+        table = load_cpp_table(TABLE_EN)
+    elif os.path.isfile(PY_TABLE):
+        table = load_python_table(PY_TABLE)
+    else:
+        raise SystemExit("找不到英文表：%s" % TABLE_EN)
     used, consumed = collect_from_cpp()
-    table = load_python_table(PY_TABLE)
-    extra = load_extra_table(EXTRA_TABLE)
+    extra = load_cpp_table(EXTRA_TABLE)
     known = dict(table)
     known.update(extra)
     problems = 0
@@ -268,8 +294,8 @@ def main():
         print("以下文案在 C++ 里用了，但两张英文表里都没有（英文界面下会显示中文）：")
         for key in sorted(missing):
             print("  %-70s <- %s" % (key.replace("\n", "\\n")[:70], ", ".join(missing[key])))
-        print("  两边共用的文案补到 Python 版的 lang_en.py 并重跑 tools/make_strings_en.py；")
-        print("  只有 C++ 用的文案补到 src/strings_en_extra.cpp。")
+        print("  翻译补在 src/strings_en_extra.cpp 里（两边共用的条目也可以直接改")
+        print("  src/strings_en.cpp，那份表现在就是权威版本）。")
 
     mismatched = []
     for key in used:
@@ -293,8 +319,8 @@ def main():
 
     unused = [key for key in table if key not in used]
     if unused:
-        print("（提示）从 Python 版生成的表里有 %d 条 C++ 侧暂时用不到，"
-              "可能只在 Python 版使用。" % len(unused))
+        print("（提示）生成表里有 %d 条 C++ 侧暂时用不到，可能只在 Python 原型里用过。"
+              % len(unused))
 
     print("C++ 侧用了 %d 条文案；生成表 %d 条 + C++ 补充表 %d 条。"
           % (len(used), len(table), len(extra)))
