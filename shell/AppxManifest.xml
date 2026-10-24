@@ -14,8 +14,17 @@
       mismatch.
     * com:SurrogateServer (not com:ExeServer, not InprocServer32) is what makes
       the packaged COM registration discoverable by File Explorer.
+    * The com:Extension stays inside <Application><Extensions>. Moving it to
+      the package-level <Extensions> looks tidier and even parses, but makeappx
+      then rejects it outright ("Package extension windows.comServer must not
+      declared the elements ExeServer, SurrogateServer, or ServiceServer"):
+      package-level COM registration only supports in-proc servers, and
+      IExplorerCommand is activated through the packaged surrogate.
     * The package is packed with "makeappx /nv" because pdf_compress.exe lives
       outside the package (uap10:AllowExternalContent) and cannot be validated.
+    * After installing, Explorer keeps its context-menu list cached: the new
+      verb only shows up after Explorer restarts (or the user signs out). This
+      is expected, not a broken registration.
 -->
 <Package
   xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"

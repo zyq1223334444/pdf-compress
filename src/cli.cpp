@@ -49,7 +49,7 @@ PDF Compressor —— 把 PDF 压到指定大小，或按指定分辨率重新�
                             smaller=必须小于目标（误差≤10%）
   --max-retries <次数>      自动模式最大渲染次数（默认 8，正常 3 次内命中）
   --dpi <数值>              直接按指定分辨率渲染一次（可省略目标大小）
-  --max-dpi <数值>          自动搜索的分辨率上限（默认 600）
+  --max-dpi <数值>          自动搜索的分辨率上限（默认 3000）
   --min-dpi <数值>          自动搜索的分辨率下限（默认 7.2）
   -j, --jobs <数值>         渲染进程数（默认=物理核心数，0 表示自动）
   --force-render            无损结果已小于目标时，也强制有损渲染把文件做大
@@ -101,7 +101,7 @@ Options:
                             it normally hits the target within 3)
   --dpi <value>             Render once at this fixed resolution (the target size
                             may then be omitted)
-  --max-dpi <value>         Upper resolution bound for the search (default: 600)
+  --max-dpi <value>         Upper resolution bound for the search (default: 3000)
   --min-dpi <value>         Lower resolution bound for the search (default: 7.2)
   -j, --jobs <n>            Worker processes (default: physical core count;
                             0 = auto)

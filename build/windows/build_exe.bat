@@ -75,6 +75,24 @@ if not defined VSPATH goto :err_msvc
 if not exist "%VSPATH%\VC\Auxiliary\Build\vcvars64.bat" goto :err_msvc
 echo [*] MSVC           : %VSPATH%
 
+rem The CMake generator name embeds the Visual Studio year, so it has to follow
+rem what is actually installed. Hard-coding "Visual Studio 17 2022" fails
+rem outright on a machine that only has VS 2026 ("could not find any instance of
+rem Visual Studio 2022"), which is exactly what happened here.
+rem vswhere reports installationVersion as 17.x.y / 18.x.y; the major number is
+rem what the generator name is keyed on. -prerelease keeps this consistent with
+rem the CMake lookup below, which also has to look at Insiders installs.
+set "VSVER="
+for /f "usebackq delims=" %%I in (`"%VSWHERE%" -latest -prerelease -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationVersion`) do set "VSVER=%%I"
+set "VSMAJOR="
+for /f "tokens=1 delims=." %%V in ("%VSVER%") do set "VSMAJOR=%%V"
+set "VSGEN="
+if "%VSMAJOR%"=="18" set "VSGEN=Visual Studio 18 2026"
+if "%VSMAJOR%"=="17" set "VSGEN=Visual Studio 17 2022"
+if "%VSMAJOR%"=="16" set "VSGEN=Visual Studio 16 2019"
+if not defined VSGEN goto :err_vsgen
+echo [*] generator      : %VSGEN%
+
 rem CMake lives in four different places depending on how it was installed,
 rem and "not on PATH" is the normal case on a machine that only has the Visual
 rem Studio Build Tools - VS ships its own copy and does not put it on PATH.
@@ -140,8 +158,8 @@ rem    the worst version of this being a leftover stub .lib that links cleanly a
 rem    produces a program that crashes. Dropping just those two cache entries
 rem    makes CMake look the library up again while keeping every compiled object.
 rem ---------------------------------------------------------------------------
-echo [*] configuring with the Visual Studio 17 2022 generator ...
-"%CMAKE%" -S "%ROOT%" -B "%BUILD%" -G "Visual Studio 17 2022" -A x64 ^
+echo [*] configuring with the %VSGEN% generator ...
+"%CMAKE%" -S "%ROOT%" -B "%BUILD%" -G "%VSGEN%" -A x64 ^
     -UMUPDF_LIBRARY -UMUPDF_INCLUDE_DIR %MUPDF_ARG%
 if errorlevel 1 goto :err_configure
 
@@ -220,6 +238,14 @@ exit /b 1
 :err_msvc
 echo [ERR] no Visual Studio installation with the x64 C++ toolset was found.
 echo       Install the "Desktop development with C++" workload, then re-run.
+exit /b 1
+
+:err_vsgen
+echo [ERR] no CMake generator is known for this Visual Studio.
+echo       installationVersion reported: "%VSVER%" (major "%VSMAJOR%")
+echo       Handled: 16 (2019), 17 (2022), 18 (2026).
+echo       For a newer Visual Studio add one line next to the other VSGEN
+echo       assignments in this script, then re-run.
 exit /b 1
 
 :err_configure

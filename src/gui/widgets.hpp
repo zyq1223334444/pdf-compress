@@ -176,6 +176,12 @@ struct TextField {
     bool multiline = false;
     bool want_vscroll = false;
     float radius = kBoxRadius;
+
+    // clip_round_region 的缓存。sync_native_controls 每帧都会走到，尺寸没变就
+    // 别重设区域——SetWindowRgn 会让窗口重算一次可见区，白调用只会闪。
+    int clip_width = -1;
+    int clip_height = -1;
+    float clip_radius = -1.0f;
 };
 
 /// 创建叠放在卡片上的原生 EDIT。
@@ -191,6 +197,13 @@ HWND create_edit(HWND parent, HINSTANCE instance, const Rect& bounds, bool multi
 void set_edit_text(HWND edit, const std::string& text);
 /// 读出 EDIT 的全部文本（UTF-8）。
 std::string get_edit_text(HWND edit);
+
+/// 把子控件的窗口区域裁成圆角矩形（radius 是物理像素，<= 0 表示恢复成矩形）。
+///
+/// 原生 EDIT 刷底色时四个角永远是直角，而外框的圆角是父窗口用 Direct2D 画的。
+/// 不裁的话 EDIT 的直角会切进圆角边框的弧线里，看上去就是"外圈圆、里面方"。
+/// 区域用的是子控件自己的客户区坐标，所以每次尺寸变化都要重设一遍。
+void clip_round_region(HWND hwnd, float radius);
 
 // ── 按钮 ──────────────────────────────────────────────────────
 

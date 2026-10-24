@@ -20,6 +20,7 @@
 #include <cmath>
 #include <iterator>
 #include <windows.h>
+#include <shellapi.h>   // DragAcceptFiles：输入框也要接住拖进来的 PDF
 
 #include "common.hpp"
 #include "i18n.hpp"
@@ -279,6 +280,10 @@ HWND create_edit(HWND parent, HINSTANCE instance, const Rect& bounds, bool multi
                          MAKELPARAM(margin_x, margin_x));
         }
     }
+    // 输入框本身也要收拖放：鼠标停在"输出目录"或日志窗上松手时，消息只会
+    // 送到这个子控件；不注册的话拖到这些地方就完全没反应（整个窗口看着像
+    // 不接受拖放）。子类化那里会把它转给父窗口，落到同一个文件列表里。
+    DragAcceptFiles(edit, TRUE);
     return edit;
 }
 
@@ -300,6 +305,31 @@ std::string get_edit_text(HWND edit) {
     if (copied <= 0) return {};
     buffer.resize(static_cast<std::size_t>(copied));
     return wide_to_utf8(buffer);
+}
+
+void clip_round_region(HWND hwnd, float radius) {
+    if (hwnd == nullptr) return;
+    RECT client{};
+    if (!GetClientRect(hwnd, &client)) return;
+    const int width = static_cast<int>(std::max<LONG>(1, client.right - client.left));
+    const int height = static_cast<int>(std::max<LONG>(1, client.bottom - client.top));
+
+    // 椭圆宽高就是圆角直径。半径不足 1 像素时没有裁的必要，直接恢复矩形
+    // （传 nullptr 会让系统把之前那个区域释放掉）。
+    const int diameter = static_cast<int>(std::lround(std::max(0.0f, radius) * 2.0f));
+    if (diameter <= 1) {
+        SetWindowRgn(hwnd, nullptr, TRUE);
+        return;
+    }
+
+    // CreateRoundRectRgn 的右/下边界是开区间，所以各 +1：不 +1 的话最右一列和
+    // 最下一行像素会留在区域外面，看起来就是边框缺了一条边。
+    HRGN region = ::CreateRoundRectRgn(0, 0, width + 1, height + 1, diameter, diameter);
+    if (region == nullptr) return;
+    if (::SetWindowRgn(hwnd, region, TRUE) == 0) {
+        // 设置失败时系统没有接管这个区域，必须自己删，否则漏一个 GDI 对象
+        ::DeleteObject(region);
+    }
 }
 
 // ── 按钮 ──────────────────────────────────────────────────────

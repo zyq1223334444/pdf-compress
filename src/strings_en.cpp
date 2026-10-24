@@ -2,9 +2,14 @@
 //
 // English translations.
 //
-// 这个文件由 tools/make_strings_en.py 从 Python 版的 pdfcomp/lang_en.py 生成，
-// 不要手改：改文案请改那份表，然后重跑生成脚本。中文是源语言，键就是中文原文。
-// 占位符（{name}、{size:.2f} …）必须与中文原文一一对应。
+// 这个文件原本由 tools/make_strings_en.py 从 Python 版的 pdfcomp/lang_en.py 生成。
+// 那份 Python 源码已经不在本仓库里（生成脚本跑不起来），所以现在以本文件为准，
+// 可以直接改；改动后跑 tools/check_i18n.py 确认文案集合没有漏。
+// 中文是源语言，键就是中文原文；占位符（{name}、{size:.2f} …）必须与中文原文一一对应。
+//
+// 注意压缩设置里那九个标签：设置卡片宽度固定（392 逻辑像素），两列"标签+输入框"
+// 加起来放不下太长的词。英文标签一度写成 "Maximum render attempts"，比中文宽一倍，
+// 结果被输入框盖掉半截、右列还被顶出卡片。这组标签请保持简短。
 
 #include "i18n.hpp"
 
@@ -133,8 +138,8 @@ const std::pair<const char*, const char*> kEnglishTable[] = {
     {"大小",                                                                                                     "Size"},
     {"状态",                                                                                                     "Status"},
     {"文件名",                                                                                                    "File name"},
-    {"目标大小 (MB)",                                                                                              "Target size (MB)"},
-    {"固定 DPI（可留空）",                                                                                            "Fixed DPI (optional)"},
+    {"目标大小 (MB)",                                                                                              "Target (MB)"},
+    {"固定 DPI（可留空）",                                                                                            "Optional DPI"},
     {"输出目录",                                                                                                   "Output folder"},
     {"模式",                                                                                                     "Mode"},
     {"自动搜索",                                                                                                   "Search automatically"},
@@ -142,10 +147,10 @@ const std::pair<const char*, const char*> kEnglishTable[] = {
     {"策略",                                                                                                     "Strategy"},
     {"最接近目标",                                                                                                  "Closest to the target"},
     {"必须小于目标",                                                                                                 "Must stay below the target"},
-    {"最大渲染次数",                                                                                                 "Maximum render attempts"},
-    {"搜索上限 (DPI)",                                                                                             "Search ceiling (DPI)"},
-    {"搜索下限 (DPI)",                                                                                             "Search floor (DPI)"},
-    {"渲染进程数",                                                                                                  "Worker processes"},
+    {"最大渲染次数",                                                                                                 "Max attempts"},
+    {"搜索上限 (DPI)",                                                                                             "Max DPI"},
+    {"搜索下限 (DPI)",                                                                                             "Min DPI"},
+    {"渲染进程数",                                                                                                  "Workers"},
     {"强制有损渲染（即使文件会变大）",                                                                                        "Force lossy rendering (even if the file grows)"},
     {"保留原始页面尺寸",                                                                                               "Keep the original page size"},
     {"只预览计划，不实际压缩",                                                                                            "Preview the plan only, do not compress"},
@@ -192,6 +197,7 @@ const std::pair<const char*, const char*> kEnglishTable[] = {
     {"[提示] 首次安装需要管理员权限（只用于把自签证书加入“受信任人”证书库），正在请求提权…",                                                          "[note] the first install needs administrator rights (only to add the self-signed certificate to the Trusted People store); requesting elevation..."},
     {"[提示] Windows 10（1809 之前）不支持稀疏包，下面注册的传统右键菜单项仍然可用。",                                                       "[note] Windows 10 (before 1809) does not support sparse packages; the classic entry registered below still works."},
     {"[警告] 一级右键菜单注册失败：{error}",                                                                                "[warning] registering the top-level context menu failed: {error}"},
+    {"[警告] 一级右键菜单的 COM 注册失败，菜单项可能不显示。",                                                                       "[warning] the COM registration behind the top-level context menu failed; the item may not appear."},
     {"[警告] 传统右键菜单项写入失败（注册表不可写）。",                                                                              "[warning] the classic entry could not be written (the registry is not writable)."},
     {"[失败] 找不到右键菜单组件（{msix}）。这份构建没有带右键菜单。",                                                                    "[failed] the context menu component ({msix}) is missing; this build does not include the context menu."},
     {"[失败] 在 {dir} 里找不到 {exe}，无法安装右键菜单。",                                                                      "[failed] {exe} was not found in {dir}, so the context menu cannot be installed."},

@@ -71,6 +71,13 @@ const char* kPublisher = "CN=zyq1223334444";
 const wchar_t* kVerbKey =
     L"Software\\Classes\\SystemFileAssociations\\.pdf\\shell\\PdfCompress";
 
+// 一级菜单那个 IExplorerCommand 的 CLSID，必须与 AppxManifest.xml 的
+// desktop5:Verb/@Clsid 和 ExplorerCommand.cpp 的 __declspec(uuid()) 一致。
+// 写成带花括号的形式，注册表键名就是它。
+const wchar_t* kCommandClsid = L"{9E7B2C41-5A64-4E1B-9C3D-2F7A8B1D4E60}";
+// 从 MSIX 里取出来、放在 exe 旁边的那个 DLL 的文件名。
+const char* kCommandDllName = "ExplorerCommand.dll";
+
 constexpr DWORD kCreateNoWindow = 0x08000000;   // CREATE_NO_WINDOW
 #endif
 
@@ -415,6 +422,77 @@ void unregister_classic() {
     ::RegDeleteKeyW(HKEY_CURRENT_USER, kVerbKey);
 }
 
+// ── 一级菜单背后的 COM 注册 ──────────────────────────────────
+
+/// 把 ExplorerCommand.dll 从 MSIX 里取出来放到 exe 旁边，再把 CLSID 注册成
+/// 普通 in-proc COM 服务器（HKCU）。
+///
+/// 只有包注册是不够的：稀疏包的 com:SurrogateServer 部署到
+/// HKLM\SOFTWARE\Classes\PackagedCom\Package\<包>\Class\{CLSID}，而 Explorer
+/// 给一级菜单找处理程序时走的是常规 COM 激活，根本不读那一份。症状很隐蔽：
+/// 包已装好、PackagedCom 字段齐全、清单里也有 fileExplorerContextMenus，菜单项
+/// 就是不出现，事件日志里连一行报错都没有。补上这条注册之后菜单项立刻出现。
+bool register_inproc_command(const std::string& msix_path, const std::string& target_dir) {
+    const std::string dll_path = path_join(target_dir, kCommandDllName);
+
+    // MSIX 就是个 zip。Expand-Archive 只认 .zip 后缀，先复制一份改名。
+    const std::string zip_name = "shell.zip";
+    const std::string script =
+        "$ErrorActionPreference='Stop';"
+        "$w=Join-Path $env:TEMP ('pdfc_shell_' + [guid]::NewGuid().ToString('N'));"
+        "New-Item -ItemType Directory -Force -Path $w | Out-Null;"
+        "Copy-Item " + ps_quote(msix_path) + " (Join-Path $w '" + zip_name + "');"
+        "Expand-Archive -Path (Join-Path $w '" + zip_name +
+        "') -DestinationPath (Join-Path $w 'x') -Force;"
+        "Copy-Item (Join-Path $w ('x\\" + std::string(kCommandDllName) + "')) " +
+        ps_quote(dll_path) + " -Force;"
+        "Remove-Item $w -Recurse -Force";
+    const CommandResult extracted = run_powershell(script);
+    if (extracted.status != 0 || !is_regular_file(dll_path)) return false;
+
+    const std::wstring clsid_key = std::wstring(L"Software\\Classes\\CLSID\\") + kCommandClsid;
+    HKEY clsid = nullptr;
+    if (::RegCreateKeyExW(HKEY_CURRENT_USER, clsid_key.c_str(), 0, nullptr, 0, KEY_WRITE, nullptr,
+                          &clsid, nullptr) != ERROR_SUCCESS) {
+        return false;
+    }
+    const std::wstring display = utf8_to_wide("PDF Compressor shell command");
+    ::RegSetValueExW(clsid, nullptr, 0, REG_SZ, reinterpret_cast<const BYTE*>(display.c_str()),
+                     static_cast<DWORD>((display.size() + 1) * sizeof(wchar_t)));
+    ::RegCloseKey(clsid);
+
+    HKEY inproc = nullptr;
+    const std::wstring inproc_key = clsid_key + L"\\InprocServer32";
+    if (::RegCreateKeyExW(HKEY_CURRENT_USER, inproc_key.c_str(), 0, nullptr, 0, KEY_WRITE, nullptr,
+                          &inproc, nullptr) != ERROR_SUCCESS) {
+        return false;
+    }
+    const std::wstring wide_dll = utf8_to_wide(dll_path);
+    bool ok = ::RegSetValueExW(inproc, nullptr, 0, REG_SZ,
+                               reinterpret_cast<const BYTE*>(wide_dll.c_str()),
+                               static_cast<DWORD>((wide_dll.size() + 1) * sizeof(wchar_t))) ==
+              ERROR_SUCCESS;
+    const std::wstring threading = L"Apartment";
+    ok = ::RegSetValueExW(inproc, L"ThreadingModel", 0, REG_SZ,
+                          reinterpret_cast<const BYTE*>(threading.c_str()),
+                          static_cast<DWORD>((threading.size() + 1) * sizeof(wchar_t))) ==
+             ERROR_SUCCESS &&
+         ok;
+    ::RegCloseKey(inproc);
+    return ok;
+}
+
+void unregister_inproc_command(const std::string& target_dir) {
+    const std::wstring clsid_key = std::wstring(L"Software\\Classes\\CLSID\\") + kCommandClsid;
+    const std::wstring inproc_key = clsid_key + L"\\InprocServer32";
+    ::RegDeleteKeyW(HKEY_CURRENT_USER, inproc_key.c_str());
+    ::RegDeleteKeyW(HKEY_CURRENT_USER, clsid_key.c_str());
+    const std::string dll_path = path_join(target_dir, kCommandDllName);
+    if (is_regular_file(dll_path)) {
+        ::DeleteFileW(utf8_to_wide(dll_path).c_str());
+    }
+}
+
 // ── 提权 ──────────────────────────────────────────────────────
 
 /// 以管理员身份重新启动自己，并把子进程的退出码带回来。
@@ -537,6 +615,13 @@ int install_shell_menu(bool quiet) {
             say(quiet,
                 tr("[提示] Windows 10（1809 之前）不支持稀疏包，"
                    "下面注册的传统右键菜单项仍然可用。"));
+        } else {
+            // 包注册只写 PackagedCom，Explorer 找一级菜单的处理程序时并不看那份，
+            // 还得补一条普通 CLSID 注册（DLL 从包里取出来放到 exe 旁边）。
+            if (!register_inproc_command(msix_path, external_dir)) {
+                say(quiet, tr("[警告] 一级右键菜单的 COM 注册失败，菜单项可能不显示。"));
+                package_ok = false;
+            }
         }
     }
 
@@ -569,6 +654,7 @@ int uninstall_shell_menu(bool quiet) {
 #else
     say(quiet, tr("[1/3] 注销 Windows 11 一级右键菜单…"));
     remove_package();
+    unregister_inproc_command(executable_dir());
 
     say(quiet, tr("[2/3] 删除传统右键菜单项…"));
     unregister_classic();

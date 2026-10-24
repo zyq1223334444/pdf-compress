@@ -97,9 +97,13 @@ private:
         int succeeded = 0;                // Finished
         int failed = 0;                   // Finished
 
-        // Ask：询问条上的文字与按钮（文案已经在工作线程里翻译好）
-        std::string ask_text;
-        std::vector<std::string> ask_labels;
+        // Ask：询问条上的文字与按钮。
+        //
+        // 这里存的是"现拼"的函数，不是已经翻译好的字符串：询问一旦发出，工作
+        // 线程就卡在条件变量上等回答，没法让它按新语言重发一次。做成每次调用
+        // 都按当前语言重新拼，用户切完语言下一次重画就是新文字。
+        std::function<std::string()> ask_text;
+        std::function<std::vector<std::string>()> ask_labels;
         std::vector<bool> ask_values;             // 是非题：按钮 -> true/false
         std::vector<std::string> ask_choices;     // 手动模式：按钮 -> "y"/"q"…
         bool ask_use_choice = false;              // 用 ask_choices 还是 ask_values
@@ -110,8 +114,8 @@ private:
     // ── 询问条的权威状态（由 ask_mutex_ 保护） ────────────────
     struct AskState {
         bool active = false;
-        std::string text;
-        std::vector<std::string> labels;
+        std::function<std::string()> text;
+        std::function<std::vector<std::string>()> labels;
         std::vector<bool> values;
         std::vector<std::string> choices;
         bool use_choice = false;
@@ -168,8 +172,14 @@ private:
     void save_preferences();
     void load_preferences(const Settings& settings);
     void sync_widget_texts();
-    void set_status(const std::string& text);
-
+    /// 设置状态文字。
+    ///
+    /// 存的是"中文原文 + 占位符参数"，不是翻译好的结果：换语言之后要能重新
+    /// 翻译一遍，否则状态栏会一直停在旧语言（"Ready"/"就绪"混着显示）。
+    void set_status(const char* key,
+                    std::vector<std::pair<std::string, std::string>> args = {});
+    /// 按当前语言重新拼 status_text_（rebuild 时调用）。
+    void refresh_status_text();
     // ── 文件列表 ──────────────────────────────────────────────
     void add_files_dialog();
     void choose_output_dir();
@@ -237,6 +247,9 @@ private:
     DrawContext ctx_;
     HBRUSH field_brush_ = nullptr;   // WM_CTLCOLOR 用（按主题重建）
     HBRUSH log_brush_ = nullptr;
+    /// 上面两个画刷是按哪个主题建的。换主题时要重建，而且要在建控件之前建好：
+    /// 原生 EDIT 一创建就会擦一次背景，擦的时候拿不到画刷就会刷成系统默认的白。
+    const Theme* brush_theme_ = nullptr;
 
     bool shutting_down_ = false;
     bool in_paint_ = false;
@@ -276,6 +289,9 @@ private:
     // ── 不随重建丢失的界面状态 ────────────────────────────────
     Inputs inputs_;
     std::string status_text_;
+    /// 状态文字的中文原文与占位符参数（换语言时用它重新翻译）
+    std::string status_key_ = "就绪";
+    std::vector<std::pair<std::string, std::string>> status_args_;
     float progress_ = 0.0f;
     int ask_button_count_ = 0;
 

@@ -107,6 +107,16 @@ constexpr float kInputHeight = 24.0f;
 constexpr float kScrollWidth = 10.0f;
 constexpr float kMinLogHeight = 140.0f;
 
+/// 压缩设置表单的九个标签（中文原文，绘制时经 tr 翻译），顺序即版面顺序。
+///
+/// layout_widgets 和 paint_grid 共用这一份：标签列宽要按当前语言实测，写死宽度
+/// 会让英文标签被输入框截掉后半截，中文却刚好放得下。
+const char* const kGridLabelKeys[] = {
+    "目标大小 (MB)", "固定 DPI（可留空）", "输出目录",         "模式",
+    "策略",          "最大渲染次数",       "渲染进程数",       "搜索上限 (DPI)",
+    "搜索下限 (DPI)",
+};
+
 constexpr wchar_t kWindowClass[] = L"PdfCompressGuiWindow";
 // 子控件用的控件 ID：只需要唯一，窗口过程靠 HWND 分辨是谁。
 constexpr int kEditId = 1001;
@@ -191,6 +201,11 @@ LRESULT CALLBACK edit_subclass_proc(HWND hwnd, UINT message, WPARAM wparam, LPAR
             SendMessageW(GetParent(hwnd), WM_MOUSEWHEEL, wparam, lparam);
             if ((GetWindowLongW(hwnd, GWL_STYLE) & ES_MULTILINE) == 0) return 0;
             break;
+        case WM_DROPFILES:
+            // 拖到输入框/日志窗上时消息落在这个子控件上。拖放的目标是文件列表，
+            // 所以原样转给父窗口（HDROP 由父窗口负责 DragFinish，这里不能释放）。
+            PostMessageW(GetParent(hwnd), WM_DROPFILES, wparam, lparam);
+            return 0;
         case WM_GETDLGCODE:
             if ((GetWindowLongW(hwnd, GWL_STYLE) & ES_MULTILINE) != 0) {
                 return DLGC_WANTARROWS | DLGC_WANTCHARS | DLGC_WANTMESSAGE;
@@ -212,7 +227,7 @@ LRESULT CALLBACK edit_subclass_proc(HWND hwnd, UINT message, WPARAM wparam, LPAR
 
 App::App() {
     theme_ = &light_theme();
-    status_text_ = tr("就绪");
+    refresh_status_text();
 }
 
 App::~App() {
@@ -347,6 +362,9 @@ int App::Run(const std::vector<std::string>& files) {
     hwnd_ = CreateWindowExW(0, kWindowClass, title.c_str(), style, x, y, outer_w, outer_h,
                             nullptr, nullptr, instance, this);
     if (hwnd_ == nullptr) return 1;
+    // 接受从资源管理器拖进来的文件（WM_DROPFILES）。子控件在 create_edit 里
+    // 各自也注册了一份，拖到输入框上也能落到文件列表里（见 edit_subclass_proc）。
+    DragAcceptFiles(hwnd_, TRUE);
 
     dpi_ = GetDpiForWindow(hwnd_);
     if (dpi_ == 0) dpi_ = system_dpi;
@@ -517,7 +535,19 @@ void App::layout_widgets(float client_width, float client_height) {
     const float grid_row_h =
         std::max(line_small, kInputHeight * scale) + 2.0f * kGridPadY * scale;
     const float card_pad = kCardPad * scale;
-    const float label_w = std::max(80.0f * scale, (138.0f - kLabelGap - kGridPadX) * scale);
+    // 标签列宽按当前语言实测，不写死。
+    //
+    // 中文标签最短（"模式" 两个字），英文长得多（"Maximum render attempts"），
+    // 原来固定成 138 逻辑像素：中文刚好放得下，英文则被输入框盖掉后半截。
+    // 量一遍九个标签取最大值，两种语言都不会截断；多出来的一点宽度由输入框
+    // 让出来（下面 field_w 会跟着变窄，但有 56 逻辑像素的下限兜着）。
+    float label_w = 80.0f * scale;
+    for (const char* key : kGridLabelKeys) {
+        label_w = std::max(label_w, text_measure(ctx_, tr(key), FontRole::Small).width);
+    }
+    // 多留一点：DirectWrite 的排版宽度和实际绘制出来能差几个像素（"Output folder"
+    // 就差了半个字母），标签一旦被右边的 EDIT 盖住就变成 "Output folde"。
+    label_w += 12.0f * scale;
     const float note_w = 352.0f * scale;
     const float gap = kCardGap * scale;
 
@@ -571,10 +601,19 @@ void App::layout_widgets(float client_width, float client_height) {
     // kLabelGap 也算进去——漏了它，第二列的右边缘就会跑到卡片内边距之外，
     // 输入框直接顶到卡片边框上（看上去就是"框子太长，戳出边框了"）。
     const float card_inner_w = right_column.width() - 2.0f * card_pad;
-    const float field_w =
-        std::max(56.0f * scale, (card_inner_w - 2.0f * (label_w + kGridPadX * scale) -
-                                 kLabelGap * scale) *
+    // 输入框再窄也得放得下四位数字（"3000"），所以标签最多占到这里为止；
+    // 超过就先把标签压窄。这样无论哪种语言的翻译有多长，两列都不会顶出卡片
+    // （下面的 field_w 也据此取下限，不会再被下限反推出去）。
+    const float min_field_w = 44.0f * scale;
+    const float max_label_w =
+        std::max(80.0f * scale, (card_inner_w - kLabelGap * scale - 2.0f * kGridPadX * scale -
+                                 2.0f * min_field_w) *
                                     0.5f);
+    label_w = std::min(label_w, max_label_w);
+    const float field_w =
+        std::max(min_field_w, (card_inner_w - 2.0f * (label_w + kGridPadX * scale) -
+                               kLabelGap * scale) *
+                                  0.5f);
     const float note_h = std::max(
         line_small,
         text_height(ctx_,
@@ -678,10 +717,14 @@ void App::layout_widgets(float client_width, float client_height) {
         for (Button& button : btn_ask_) button.bounds = Rect{};
         ask_label_ = Rect{};
         if (ask_button_count_ > 0) {
-            const float measured =
-                std::max(line_small,
-                         text_height(ctx_, ask_visible_.text, action_body_.width(),
-                                     FontRole::Small));
+            // 文字和按钮标题都按当前语言现取（布局每帧都跑，切语言后自动跟上）
+            const std::string ask_text =
+                ask_visible_.text ? ask_visible_.text() : std::string();
+            const std::vector<std::string> ask_labels =
+                ask_visible_.labels ? ask_visible_.labels() : std::vector<std::string>{};
+            const float measured = std::max(
+                line_small,
+                text_height(ctx_, ask_text, action_body_.width(), FontRole::Small));
             ask_label_ = make_rect(action_body_.left, action_body_.top, action_body_.right,
                                    action_body_.top + measured);
             float ask_top = ask_label_.bottom + 8.0f * scale;
@@ -689,6 +732,12 @@ void App::layout_widgets(float client_width, float client_height) {
             const float available = action_card_.bottom - card_pad - ask_top;
             const float each = std::max(24.0f * scale,
                                         (available - (count - 1) * 4.0f * scale) / count);
+            for (int index = 0; index < 4; ++index) {
+                Button& button = btn_ask_[index];
+                button.text = (index < static_cast<int>(ask_labels.size()))
+                                  ? ask_labels[static_cast<std::size_t>(index)]
+                                  : std::string();
+            }
             for (int index = 0; index < count; ++index) {
                 const float top_button = ask_top + index * (each + 4.0f * scale);
                 btn_ask_[index].bounds =
@@ -773,6 +822,10 @@ void App::layout_widgets(float client_width, float client_height) {
         progress_bar_.bounds = take_top(rest_after_head, 6.0f * scale, rest_after_head);
         rest_after_head = offset(rest_after_head, 0.0f, kProgressGap * scale);
         field_log_.bounds = rest_after_head;
+        // offset() 把上下两条边一起下移，这里用了两次，底边就累计多走了
+        // 2*kProgressGap > kCardPad，日志框的框线会画到卡片外面去。
+        // 底边是卡片内缘，不跟着偏移走，收回来。
+        field_log_.bounds.bottom = std::min(field_log_.bounds.bottom, log_body_.bottom);
     }
 }
 
@@ -786,14 +839,11 @@ void App::paint_card(const Rect& rect, float radius) {
 
 void App::paint_grid() {
     // 顺序与 gui.py 的 label(...) 调用一致：先左后右、逐行往下
-    const char* texts[] = {
-        "目标大小 (MB)", "固定 DPI（可留空）", "输出目录",         "模式",
-        "策略",          "最大渲染次数",       "渲染进程数",       "搜索上限 (DPI)",
-        "搜索下限 (DPI)",
-    };
-    const std::size_t count = std::min<std::size_t>(std::size(texts), labels_.size());
+    const std::size_t count =
+        std::min<std::size_t>(std::size(kGridLabelKeys), labels_.size());
     for (std::size_t index = 0; index < count; ++index) {
-        draw_text_utf8(ctx_, tr(texts[index]), labels_[index], FontRole::Small, theme_->muted);
+        draw_text_utf8(ctx_, tr(kGridLabelKeys[index]), labels_[index], FontRole::Small,
+                       theme_->muted);
     }
 }
 
@@ -927,8 +977,9 @@ void App::paint() {
 
     // ---- 操作卡片：平时是"开始/取消"，询问时换成提示行 + 若干按钮 ----
     if (ask_button_count_ > 0) {
-        draw_text_utf8_wrapped(ctx_, ask_visible_.text, ask_label_, FontRole::Small,
-                               theme_->text);
+        const std::string ask_text =
+            ask_visible_.text ? ask_visible_.text() : std::string();
+        draw_text_utf8_wrapped(ctx_, ask_text, ask_label_, FontRole::Small, theme_->text);
         for (int index = 0; index < ask_button_count_ && index < 4; ++index) {
             btn_ask_[index].paint(ctx_, scale_);
         }
@@ -987,12 +1038,32 @@ void App::destroy_native_controls() {
         DeleteObject(log_brush_);
         log_brush_ = nullptr;
     }
+    // 画刷没了，主题标记也要一起清：下一次 sync 必须先重建画刷，再建控件。
+    brush_theme_ = nullptr;
     log_text_cache_.clear();
 }
 
 void App::sync_native_controls() {
     if (hwnd_ == nullptr) return;
     const HINSTANCE instance = GetModuleHandleW(nullptr);
+
+    // ── 画刷必须赶在控件创建之前 ──────────────────────────────
+    // EDIT 一建出来就会擦一次自己的背景，擦的时候用的正是 WM_CTLCOLOR* 返回的
+    // 画刷。画刷晚一步创建就返回空，控件按系统默认（白）刷一遍——而且只要它的
+    // 内容不再变化，就一直不会重刷。空日志窗是最典型的受害者：切到深色主题后
+    // 那块白底会一直留着（内容为空时连 SetWindowText 都不会调用）。
+    //
+    // 顺带解决另一个浪费：以前每次 sync（也就是每一帧）都删了重建两个画刷。
+    const bool theme_changed = (brush_theme_ != theme_) || field_brush_ == nullptr ||
+                               log_brush_ == nullptr;
+    if (theme_changed) {
+        if (field_brush_ != nullptr) DeleteObject(field_brush_);
+        if (log_brush_ != nullptr) DeleteObject(log_brush_);
+        field_brush_ = CreateSolidBrush(to_colorref(theme_->field));
+        log_brush_ = CreateSolidBrush(to_colorref(theme_->log_bg));
+        brush_theme_ = theme_;
+    }
+
     const auto ensure = [&](TextField& field, bool multiline, bool read_only,
                             DWRITE_FONT_WEIGHT weight, float font_size, int margin_x,
                             int margin_y) {
@@ -1005,16 +1076,52 @@ void App::sync_native_controls() {
                 SetWindowSubclass(field.hwnd, edit_subclass_proc, kEditSubclassId,
                                   reinterpret_cast<DWORD_PTR>(this));
             }
+            // 新建的 EDIT 没有圆角区域，缓存必须作废：否则换语言/换主题重建
+            // （destroy_native_controls + sync_native_controls）之后尺寸恰好没变，
+            // 会被缓存判定成"已经设过"而跳过，输入框四个角又变回直角。
+            field.clip_width = -1;
+            field.clip_height = -1;
+            field.clip_radius = -1.0f;
         }
         if (field.hwnd == nullptr || field.bounds.empty()) return;
-        // 往里收一个像素：外面的框线是父窗口画的（paint_field_frames），而
+        // 往里收：外面的框线是父窗口画的（paint_field_frames），而
         // WS_CLIPCHILDREN 会把父窗口的绘制挡在子控件矩形之外，不收就会把框线盖掉。
-        const float inset = std::max(1.0f, scale_);
+        //
+        // 多让 1 像素是给取整留的余量：pixel() 会把 left+inset 和 width-2*inset
+        // 各自四舍五入，两处误差叠起来能让 EDIT 宽出 1 像素、压住描边的内半边，
+        // 拐角处的框线就会断一截。
+        const float inset = std::max(1.0f, scale_) + 1.0f;
+        const int field_width = std::max(1, pixel(field.bounds.width() - 2.0f * inset));
+        const int field_height = std::max(1, pixel(field.bounds.height() - 2.0f * inset));
         SetWindowPos(field.hwnd, nullptr, pixel(field.bounds.left + inset),
-                     pixel(field.bounds.top + inset),
-                     std::max(1, pixel(field.bounds.width() - 2.0f * inset)),
-                     std::max(1, pixel(field.bounds.height() - 2.0f * inset)),
+                     pixel(field.bounds.top + inset), field_width, field_height,
                      SWP_NOZORDER | SWP_NOACTIVATE);
+        // 单行框的内边距跟着框宽走：设置卡片里的数字框只有六七十像素宽，
+        // 固定留白 12 像素就吃掉三分之一，"3000" 放不下会横向滚动，第一个字
+        // 被切掉一半（看起来像 500）。框窄时把留白压到 2~4 像素。
+        if (!multiline) {
+            const int wanted_pad = std::min(margin_x, std::max(2, field_width / 6));
+            SendMessageW(field.hwnd, EM_SETMARGINS, EC_LEFTMARGIN | EC_RIGHTMARGIN,
+                         MAKELPARAM(wanted_pad, wanted_pad));
+        }
+        // 再把 EDIT 自己裁成圆角。它是原生控件、底色是矩形，四个直角会正好切进
+        // 父窗口画的圆角边框里——不裁的话看上去就是"外圈圆、里面方"。
+        //
+        // 半径不能简单写成 radius - inset：描边是"先把矩形内缩半个线宽、再按原半径
+        // 画弧"，所以那条弧的圆心在离角 0.5*线宽 + radius 的地方；而 EDIT 的裁剪弧
+        // 圆心在 inset + r。两者要同心就得 r = radius - inset + 0.5*线宽。
+        // 少了这半个线宽，拐角处会出现两条相距不到一像素的弧线——单看不明显，
+        // 放在日志窗那种大圆角上就是一眼能看出的"没有对齐"。
+        const float stroke_half = 0.5f * std::max(1.0f, scale_);
+        const float field_radius =
+            std::max(0.0f, field.radius * scale_ - inset + stroke_half);
+        if (field_width != field.clip_width || field_height != field.clip_height ||
+            std::fabs(field_radius - field.clip_radius) > 0.01f) {
+            clip_round_region(field.hwnd, field_radius);
+            field.clip_width = field_width;
+            field.clip_height = field_height;
+            field.clip_radius = field_radius;
+        }
     };
 
     const DWRITE_FONT_WEIGHT normal = DWRITE_FONT_WEIGHT_NORMAL;
@@ -1028,29 +1135,36 @@ void App::sync_native_controls() {
     ensure(field_mindpi_, false, false, normal, 12.0f * scale_, pad_x, 0);
     ensure(field_log_, true, true, normal, 12.0f * scale_, pad_x, pixel(8.0f * scale_));
 
-    // WM_CTLCOLOR* 要返回画刷：主题换了就重建（颜色必须和卡片一致）
-    if (field_brush_ != nullptr) DeleteObject(field_brush_);
-    if (log_brush_ != nullptr) DeleteObject(log_brush_);
-    field_brush_ = CreateSolidBrush(to_colorref(theme_->field));
-    log_brush_ = CreateSolidBrush(to_colorref(theme_->log_bg));
-
     // 日志内容只在变化时整体重写（每次重写都会丢滚动位置、也要闪一下）
-    if (field_log_.hwnd == nullptr || log_text_cache_ == log_lines_) return;
-    log_text_cache_ = log_lines_;
-    std::string text;
-    for (const std::string& line : log_lines_) {
-        text += line;
-        text += "\r\n";
+    if (field_log_.hwnd != nullptr && log_text_cache_ != log_lines_) {
+        log_text_cache_ = log_lines_;
+        std::string text;
+        for (const std::string& line : log_lines_) {
+            text += line;
+            text += "\r\n";
+        }
+        // ES_READONLY 的控件要用 EM_SETREADONLY 短暂解锁才能写入
+        SendMessageW(field_log_.hwnd, EM_SETREADONLY, FALSE, 0);
+        SetWindowTextW(field_log_.hwnd, utf8_to_wide(text).c_str());
+        SendMessageW(field_log_.hwnd, EM_SETREADONLY, TRUE, 0);
+        // 滚到底：EM_SETSEL 到末尾 + EM_SCROLLCARET 是最稳的组合
+        const int length = GetWindowTextLengthW(field_log_.hwnd);
+        SendMessageW(field_log_.hwnd, EM_SETSEL, static_cast<WPARAM>(length),
+                     static_cast<LPARAM>(length));
+        SendMessageW(field_log_.hwnd, EM_SCROLLCARET, 0, 0);
     }
-    // ES_READONLY 的控件要用 EM_SETREADONLY 短暂解锁才能写入
-    SendMessageW(field_log_.hwnd, EM_SETREADONLY, FALSE, 0);
-    SetWindowTextW(field_log_.hwnd, utf8_to_wide(text).c_str());
-    SendMessageW(field_log_.hwnd, EM_SETREADONLY, TRUE, 0);
-    // 滚到底：EM_SETSEL 到末尾 + EM_SCROLLCARET 是最稳的组合
-    const int length = GetWindowTextLengthW(field_log_.hwnd);
-    SendMessageW(field_log_.hwnd, EM_SETSEL, static_cast<WPARAM>(length),
-                 static_cast<LPARAM>(length));
-    SendMessageW(field_log_.hwnd, EM_SCROLLCARET, 0, 0);
+
+    // 换主题时每个原生控件都得强制重刷一次：底色是它们自己拿画刷刷的，换了
+    // 画刷不会自动重刷（内容没变就更不会）。不补这一步，日志窗会在切到深色
+    // 之后一直是白底，直到用户碰它一下。
+    if (theme_changed) {
+        TextField* fields[] = {&field_target_, &field_dpi_,    &field_outdir_,
+                               &field_retries_, &field_jobs_,   &field_maxdpi_,
+                               &field_mindpi_,  &field_log_};
+        for (TextField* field : fields) {
+            if (field->hwnd != nullptr) InvalidateRect(field->hwnd, nullptr, TRUE);
+        }
+    }
 }
 
 // ── 交互状态 ──────────────────────────────────────────────────
@@ -1159,9 +1273,9 @@ void App::drain_messages() {
                                 : 1.0f;
                 progress_bar_.set_value(progress_);
                 // 数字先格式化成字符串，再交给带占位符的 tr
-                status_text_ = tr("正在渲染 {done}/{total} 页",
-                                  {{"done", std::to_string(message->done)},
-                                   {"total", std::to_string(message->total)}});
+                set_status("正在渲染 {done}/{total} 页",
+                           {{"done", std::to_string(message->done)},
+                            {"total", std::to_string(message->total)}});
                 needs_repaint = true;
                 break;
             case MessageKind::Row:
@@ -1197,12 +1311,19 @@ void App::start_jobs() {
     if (!collect_inputs(inputs, error)) {
         // 参数不对只写日志 + 改状态文字，不弹模态框（和 gui.py 一致）
         write_log(tr("[失败] {error}", {{"error", error}}));
-        set_status(tr("参数有误"));
+        set_status("参数有误");
         return;
     }
     save_preferences();
 
-    (void)inputs;   // 下面用 inputs_ 里的同一份值构造 JobOptions
+    // collect_inputs 先把 inputs_ 整个复制到 out，再**只往 out 里**写解析结果
+    // （target / dpi / jobs / retries 这些数字字段）。inputs_ 自己始终只有文本，
+    // 数字字段是空的。以前这里接着 make_options(..., inputs_)，于是：
+    //   * 目标大小永远被判成"没填"，点「开始压缩」必然报
+    //     "需要给出目标大小(MB)，或使用 --dpi 指定固定分辨率"；
+    //   * 最大渲染次数、渲染进程数、搜索上下限也一并被无视，全走默认值。
+    // 把校验过的这份写回去，后面所有用到 inputs_ 的地方才是用户真正填的值。
+    inputs_ = inputs;
 
     for (std::size_t index = 0; index < files_.size(); ++index) {
         FileItem& item = files_[index];
@@ -1215,7 +1336,7 @@ void App::start_jobs() {
     running_ = true;
     progress_ = 0.0f;
     progress_bar_.set_value(0.0f);
-    status_text_ = tr("开始…");
+    set_status("开始…");
     refresh_buttons();
 
     // 参数在工作线程启动之前就固化：线程里不再碰任何控件、也不读任何成员文本。
@@ -1233,7 +1354,7 @@ void App::request_cancel() {
     if (!running_) return;
     cancel_requested_ = true;
     cancel_pending_ = true;
-    status_text_ = tr("正在取消…");
+    set_status("正在取消…");
     // 还在等回答的询问要用默认值唤醒，否则工作线程会永远卡在条件变量上
     {
         std::lock_guard<std::mutex> lock(ask_mutex_);
@@ -1384,15 +1505,15 @@ void App::handle_finished(int succeeded, int failed) {
     running_ = false;
     if (cancel_pending_) {
         // 用户确实取消过：状态文字按"已取消"收场（进度条停在当前值）
-        status_text_ = tr("已取消");
+        set_status("已取消");
     } else if (failed > 0 && succeeded == 0) {
-        status_text_ = tr("失败");
+        set_status("失败");
     } else {
         progress_ = 1.0f;
         progress_bar_.set_value(1.0f);
-        status_text_ = tr("完成：成功 {done} 个，失败 {failed} 个",
-                          {{"done", std::to_string(succeeded)},
-                           {"failed", std::to_string(failed)}});
+        set_status("完成：成功 {done} 个，失败 {failed} 个",
+                   {{"done", std::to_string(succeeded)},
+                    {"failed", std::to_string(failed)}});
     }
     cancel_requested_ = false;
     cancel_pending_ = false;
@@ -1419,7 +1540,11 @@ void App::enter_ask(Message* message) {
         ask_visible_.text = message->ask_text;
         ask_visible_.labels = message->ask_labels;
     }
-    ask_button_count_ = std::min<int>(static_cast<int>(ask_visible_.labels.size()), 4);
+    // 按钮文字不在这里定格：布局阶段每帧按当前语言重新取（见 layout_widgets），
+    // 否则询问挂着的时候切语言，按钮会一直是旧语言。
+    const std::vector<std::string> labels =
+        ask_visible_.labels ? ask_visible_.labels() : std::vector<std::string>{};
+    ask_button_count_ = std::min<int>(static_cast<int>(labels.size()), 4);
     for (int index = 0; index < 4; ++index) {
         Button& button = btn_ask_[index];
         button.enabled = true;
@@ -1427,9 +1552,6 @@ void App::enter_ask(Message* message) {
         button.pressed = false;
         button.role = (index == 0) ? FontRole::SemiboldSmall : FontRole::Small;
         button.kind = (index == 0) ? ButtonKind::Accent : ButtonKind::Subtle;
-        button.text = (index < ask_button_count_)
-                          ? ask_visible_.labels[static_cast<std::size_t>(index)]
-                          : std::string();
     }
     // 重新算布局：询问条的高度取决于文字有几行
     compute_layout();
@@ -1437,7 +1559,10 @@ void App::enter_ask(Message* message) {
 
 void App::answer_ask(std::size_t index) {
     std::lock_guard<std::mutex> lock(ask_mutex_);
-    if (!ask_pending_ || index >= ask_request_.labels.size()) return;
+    if (!ask_pending_) return;
+    const std::vector<std::string> labels =
+        ask_request_.labels ? ask_request_.labels() : std::vector<std::string>{};
+    if (index >= labels.size()) return;
     ask_answered_ = true;
     if (ask_request_.use_choice) {
         ask_answer_choice_ = (index < ask_request_.choices.size())
@@ -1460,12 +1585,17 @@ bool App::ask_force_grow(std::int64_t size, std::int64_t target) {
     // 由界面线程负责 delete，等我们回到这里它可能已经没了。
     auto* message = new Message();
     message->kind = MessageKind::Ask;
-    message->ask_text =
-        tr("无损优化后为 {size}，已经小于目标 {target:.2f} MB。"
-           "继续做有损渲染只会让文件变大，不会提高画质。要继续吗？",
-           {{"size", human_size(static_cast<double>(size))},
-            {"target", fmt_fixed(to_mb(static_cast<double>(target)), 2)}});
-    message->ask_labels = {tr("继续渲染"), tr("保留无损结果")};
+    // 文案存成 lambda 而不是拼好的字符串：用户可能在这个询问挂着的时候切语言，
+    // 而工作线程正卡在下面的条件变量上，没法重发一份新文案。
+    message->ask_text = [size, target] {
+        return tr("无损优化后为 {size}，已经小于目标 {target:.2f} MB。"
+                  "继续做有损渲染只会让文件变大，不会提高画质。要继续吗？",
+                  {{"size", human_size(static_cast<double>(size))},
+                   {"target", fmt_fixed(to_mb(static_cast<double>(target)), 2)}});
+    };
+    message->ask_labels = [] {
+        return std::vector<std::string>{tr("继续渲染"), tr("保留无损结果")};
+    };
     message->ask_values = {true, false};
     message->ask_cancel_default = false;
     message->ask_use_choice = false;
@@ -1480,9 +1610,13 @@ bool App::ask_force_grow(std::int64_t size, std::int64_t target) {
 bool App::ask_accept_lossless(std::int64_t size, std::int64_t /*target*/) {
     auto* message = new Message();
     message->kind = MessageKind::Ask;
-    message->ask_text = tr("是否直接接受无损优化结果 {size}？",
-                           {{"size", human_size(static_cast<double>(size))}});
-    message->ask_labels = {tr("接受"), tr("继续调整")};
+    message->ask_text = [size] {
+        return tr("是否直接接受无损优化结果 {size}？",
+                  {{"size", human_size(static_cast<double>(size))}});
+    };
+    message->ask_labels = [] {
+        return std::vector<std::string>{tr("接受"), tr("继续调整")};
+    };
     message->ask_values = {true, false};
     // 窗口关掉就按"接受"收场：已经算出来的无损结果比丢掉它更有价值
     message->ask_cancel_default = true;
@@ -1498,13 +1632,16 @@ bool App::ask_accept_lossless(std::int64_t size, std::int64_t /*target*/) {
 std::string App::ask_manual(const Trial& trial, std::optional<double> hint_dpi) {
     auto* message = new Message();
     message->kind = MessageKind::Ask;
-    message->ask_text =
-        tr("当前结果 {size}，相当于 {dpi:.0f} DPI / JPEG {quality}。下一步怎么做？",
-           {{"size", human_size(static_cast<double>(trial.size))},
-            {"dpi", fmt_fixed(trial.dpi(), 0)},
-            {"quality", std::to_string(trial.quality)}});
-    message->ask_labels = {tr("接受"), tr("更清晰（更大）"), tr("更小"),
-                           tr("保留最佳并退出")};
+    message->ask_text = [trial] {
+        return tr("当前结果 {size}，相当于 {dpi:.0f} DPI / JPEG {quality}。下一步怎么做？",
+                  {{"size", human_size(static_cast<double>(trial.size))},
+                   {"dpi", fmt_fixed(trial.dpi(), 0)},
+                   {"quality", std::to_string(trial.quality)}});
+    };
+    message->ask_labels = [] {
+        return std::vector<std::string>{tr("接受"), tr("更清晰（更大）"), tr("更小"),
+                                        tr("保留最佳并退出")};
+    };
     message->ask_choices = {"y", "larger", "smaller", "q"};
     message->ask_use_choice = true;
     // 取消（或窗口关闭）时统一走 "q"：保留已经找到的最佳结果并退出
@@ -1555,6 +1692,9 @@ void App::rebuild() {
     sync_native_controls();
     restore_inputs();
     sync_widget_texts();
+    // 状态文字也是翻译出来的，必须重新拼一遍，否则切完语言它还停在旧语言
+    // （最典型的是跑完一次任务后的 "Ready" / "完成：成功 1 个" 混搭）。
+    refresh_status_text();
     refresh_buttons();
 
     selected_ = saved_selection;
@@ -1697,8 +1837,17 @@ void App::refresh_buttons() {
     btn_clear_.set_enabled(idle && !files_.empty());
 }
 
-void App::set_status(const std::string& text) {
-    status_text_ = text;
+void App::set_status(const char* key,
+                     std::vector<std::pair<std::string, std::string>> args) {
+    status_key_ = key == nullptr ? std::string() : std::string(key);
+    status_args_ = std::move(args);
+    refresh_status_text();
+}
+
+void App::refresh_status_text() {
+    // 状态文字必须整体重新翻译，不能只把已有的译文换个语言——旧译文里没有
+    // 占位符可填，而且换过语言之后再换回去也回不到原文。
+    status_text_ = tr(status_key_.c_str(), status_args_);
     if (hwnd_ != nullptr) InvalidateRect(hwnd_, nullptr, FALSE);
 }
 
@@ -1996,6 +2145,37 @@ LRESULT App::handle_message(HWND hwnd, UINT message, WPARAM wparam, LPARAM lpara
             if (info != nullptr && min_width_ > 0 && min_height_ > 0) {
                 info->ptMinTrackSize.x = min_width_;
                 info->ptMinTrackSize.y = min_height_;
+            }
+            return 0;
+        }
+
+        case WM_DROPFILES: {
+            // 从资源管理器拖进来的文件。整窗都愿意接：子控件（输入框、日志窗）
+            // 收到时会在子类化里原样转给这里，HDROP 也由这里统一 DragFinish。
+            const HDROP drop = reinterpret_cast<HDROP>(wparam);
+            const UINT count = DragQueryFileW(drop, 0xFFFFFFFFu, nullptr, 0);
+            bool added = false;
+            for (UINT index = 0; index < count; ++index) {
+                const UINT length = DragQueryFileW(drop, index, nullptr, 0);
+                if (length == 0) continue;
+                std::wstring buffer(static_cast<std::size_t>(length) + 1, L'\0');
+                if (DragQueryFileW(drop, index, buffer.data(), length + 1) == 0) continue;
+                buffer.resize(length);
+                const std::string path = wide_to_utf8(buffer);
+                // 只收 .pdf：拖进一个 txt 或者文件夹，列表中会多出一条点开必然
+                // 失败的行，不如直接忽略。
+                const std::string name = to_lower(path_basename(path));
+                if (name.size() <= 4 || name.compare(name.size() - 4, 4, ".pdf") != 0) {
+                    continue;
+                }
+                add_file(path);
+                added = true;
+            }
+            DragFinish(drop);
+            if (added) {
+                update_list_scroll();
+                refresh_buttons();
+                InvalidateRect(hwnd, nullptr, FALSE);
             }
             return 0;
         }

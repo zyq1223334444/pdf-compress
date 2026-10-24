@@ -98,7 +98,7 @@ explains and exits with code 2.
 | `--strategy {closest,smaller}` | `closest`: nearest to the target (default); `smaller`: strictly below it |
 | `--max-retries <n>` | maximum renders in auto mode (default 8; it normally hits the target in 3) |
 | `--dpi <value>` | render once at this resolution; the target size may then be omitted |
-| `--max-dpi <value>` | search ceiling (default 600) |
+| `--max-dpi <value>` | search ceiling (default 3000) |
 | `--min-dpi <value>` | search floor (default 7.2) |
 | `-j, --jobs <n>` | worker processes (default: physical cores; `0` = auto) |
 | `--force-render` | render even though the lossless result is already smaller than the target |
@@ -173,6 +173,9 @@ pdf_compress.exe report.pdf      open it with this file queued
   selection); *Remove selected* and *Clear* manage the queue; double-clicking a row opens its folder.
   The same file cannot be queued twice. Files are compressed one after another, each row carrying its
   own status and result.
+- Files can also be **dragged in from Explorer**, anywhere on the window — the whole window accepts the
+  drop, including the text boxes and the log. Only `.pdf` files are queued; anything else is ignored
+  rather than adding a row that is bound to fail.
 - **Settings card** — every command line option is here: target size, fixed DPI, output folder with a
   folder picker, mode, strategy, maximum attempts, worker processes, search ceiling and floor, and the
   *force render*, *keep page size* and *plan only* check boxes.
@@ -221,6 +224,14 @@ implementing `IExplorerCommand`, shipped inside an **MSIX sparse package** that 
 A classic `HKCU\Software\Classes\SystemFileAssociations\.pdf\shell` verb is registered alongside it, so
 Windows 10 and the *Show more options* submenu keep working.
 
+- The sparse package registers its COM class through a surrogate, and that registration lands in
+  `HKLM\SOFTWARE\Classes\PackagedCom`. File Explorer does **not** look the verb's CLSID up there: it
+  goes through ordinary COM activation. So `--install-menu` additionally extracts
+  `ExplorerCommand.dll` from the package next to the executable and registers
+  `HKCU\Software\Classes\CLSID\{9E7B2C41-…}\InprocServer32`. Without that second step the package
+  installs cleanly, every registry field looks right, and the menu entry still never appears — with no
+  error anywhere. Leave that DLL beside the executable; uninstalling removes both the registration and
+  the file.
 - The **first** install needs administrator rights only to trust the certificate, and the program asks
   for elevation itself; afterwards it runs unelevated. On a machine installed from the setup, the
   certificate is already trusted and `--install-menu --quiet` raises no UAC prompt.
