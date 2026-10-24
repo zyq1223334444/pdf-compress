@@ -15,6 +15,10 @@
 
 #include "shellmenu.hpp"
 
+#if !defined(_WIN32)
+#include "shellmenu_posix.hpp"
+#endif
+
 #include <cstdio>
 #include <cstring>
 #include <string>
@@ -529,7 +533,8 @@ int relaunch_elevated() {
 #endif  // _WIN32
 
 /// 这一步的输出去哪：quiet 时什么都不打印（安装包调用时用）。
-void say(bool quiet, const std::string& message) {
+/// 非 Windows 上由 shellmenu_posix.cpp 自己打印，这里只给 Windows 用。
+[[maybe_unused]] void say(bool quiet, const std::string& message) {
     if (!quiet) emit(message);
 }
 
@@ -539,8 +544,9 @@ void say(bool quiet, const std::string& message) {
 
 int install_shell_menu(bool quiet) {
 #if !defined(_WIN32)
-    say(quiet, tr("[失败] 右键菜单只有 Windows 支持。"));
-    return kExitFail;
+    // Linux 与 macOS 的实现另起一个文件：那边按文件管理器和快速操作各有一套
+    // 约定，和这里的注册表 / MSIX 没有任何共同点。
+    return install_shell_menu_posix(quiet);
 #else
     const std::string external_dir = executable_dir();
     std::string exe_path = path_join(external_dir, kExeName);
@@ -649,8 +655,7 @@ int install_shell_menu(bool quiet) {
 
 int uninstall_shell_menu(bool quiet) {
 #if !defined(_WIN32)
-    say(quiet, tr("[失败] 右键菜单只有 Windows 支持。"));
-    return kExitFail;
+    return uninstall_shell_menu_posix(quiet);
 #else
     say(quiet, tr("[1/3] 注销 Windows 11 一级右键菜单…"));
     remove_package();

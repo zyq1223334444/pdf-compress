@@ -204,6 +204,21 @@ const std::pair<const char*, const char*> kEnglishTable[] = {
     {"[失败] 无法把证书加入“受信任人”证书库。",                                                                                 "[failed] could not add the certificate to the Trusted People store."},
     {"[失败] 证书尚未受信任，需要管理员权限；请使用安装包安装，或以管理员身份运行 pdf_compress --install-menu。",                                   "[failed] the certificate is not trusted yet and administrator rights are needed; install with the setup program, or run pdf_compress --install-menu as administrator."},
     {"[失败] 右键菜单没有注册成功。",                                                                                       "[failed] the context menu was not registered."},
+
+    // ── Linux / macOS 的右键菜单 ──────────────────────────────────
+    {"把这个 PDF 压到设置里的目标大小",                                                                                     "Compress this PDF to the target size from the settings"},
+    {"[完成] 已压缩 %s 个文件到 %s MB",                                                                                 "[done] compressed %s file(s) to %s MB"},
+    {"[警告] %s 个成功、%s 个失败（日志：%s）",                                                                              "[warning] %s succeeded, %s failed (log: %s)"},
+    {"[失败] 找不到 {exe}。",                                                                                         "[failed] {exe} was not found."},
+    {"[失败] 无法写入 {path}。",                                                                                        "[failed] could not write {path}."},
+    {"[完成] 已写入压缩脚本：{path}",                                                                                     "[done] wrote the compression script to {path}"},
+    {"[完成] 已安装菜单项：{path}",                                                                                       "[done] installed the menu entry: {path}"},
+    {"[完成] 已安装右键菜单：{path}",                                                                                     "[done] installed the context menu: {path}"},
+    {"[警告] 无法写入 {path}，对应的文件管理器不会有这一项。",                                                                     "[warning] could not write {path}; that file manager will not have the entry."},
+    {"[提示] Nautilus/Caja 的项在“脚本”子菜单里，Dolphin 在“动作”子菜单里；Nemo 直接显示在右键菜单中。",                                  "[note] Nautilus/Caja list it under Scripts, Dolphin under Actions; Nemo shows it in the context menu itself."},
+    {"[提示] 目标大小取自设置文件，改完设置重新打开文件管理器即可。",                                                                    "[note] the target size comes from the settings file; reopen the file manager after changing it."},
+    {"[提示] 在 Finder 里右键 PDF，菜单在“快速操作”里；没有的话到“系统设置 → 键盘 → 键盘快捷键 → 服务”里勾选。",                                "[note] right-click a PDF in Finder and look under Quick Actions; if it is missing, enable it in System Settings > Keyboard > Keyboard Shortcuts > Services."},
+    {"[失败] 右键菜单只有 Windows、macOS 和 Linux 支持。",                                                                    "[failed] the context menu is only supported on Windows, macOS and Linux."},
 };
 
 }  // namespace

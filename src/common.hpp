@@ -26,7 +26,12 @@ inline constexpr const char* kAppName = "PDF Compressor";
 inline constexpr const char* kAppId = "pdf-compress";
 inline constexpr const char* kPublisher = "zyq1223334444";
 inline constexpr const char* kAppUrl = "https://github.com/zyq1223334444/pdf-compress";
+// Linux/macOS 上的可执行文件不带扩展名；右键菜单与安装/卸载代码都用它拼路径。
+#if defined(_WIN32)
 inline constexpr const char* kExeName = "pdf_compress.exe";
+#else
+inline constexpr const char* kExeName = "pdf_compress";
+#endif
 
 // ── 退出码 ────────────────────────────────────────────────────
 // 130 是"被用户中断"的约定值，命令行与图形界面共用同一套语义。

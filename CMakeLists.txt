@@ -81,6 +81,7 @@ else()
     list(APPEND PDFC_SOURCES
         src/platform_posix.cpp
         src/gui/gui_stub.cpp
+        src/shellmenu_posix.cpp   # Linux/macOS 的右键菜单，Windows 走 shellmenu.cpp
     )
 endif()
 

@@ -11,7 +11,7 @@
 |---|---|
 | **命令行** | `pdf_compress 输入.pdf 5` —— 压到 5 MB 左右。Windows、Linux、macOS |
 | **图形界面** | 仅 Windows。Win32 + Direct2D 手工绘制，不依赖任何界面框架，不需要装运行时 |
-| **资源管理器右键菜单** | Windows 11 一级菜单，`.pdf` 文件直接出现在右键菜单里，不用点"显示更多选项" |
+| **右键菜单** | Windows 11 一级菜单（不用点"显示更多选项"）与 Windows 10，外加上 Nautilus/Caja、Nemo、Dolphin 和 macOS 的"快速操作"，只对 `.pdf` 生效 |
 
 两种压缩方式配合使用：**无损优化**（清理并重新打包，画质不变）和**有损渲染**（按搜索算出的
 分辨率把每页重新渲染成 JPEG）。能无损解决就无损解决，必须渲染时才渲染。
@@ -97,7 +97,7 @@ pdf_compress <输入PDF> --dpi 150 [选项]
 | `--lang {zh,en}` | 只对本次运行指定语言（不写入设置） |
 | `-h, --help` | 显示帮助，语言跟随当前设置 |
 | `--help-cn`、`--help-en` | 强制中文帮助（`--help-zh` 同义）或英文帮助 |
-| `--install-menu` / `--uninstall-menu` | 添加 / 移除资源管理器右键菜单（仅 Windows，需要管理员权限） |
+| `--install-menu` / `--uninstall-menu` | 添加 / 移除右键菜单（Windows 第一次要管理员权限，用于装证书；Linux 与 macOS 只写进用户目录） |
 | `-V, --version` | 显示版本号 |
 
 另有两个内部选项：`--quiet` 关掉 `--install-menu` 的进度输出（安装包调用的就是
@@ -182,14 +182,19 @@ pdf_compress.exe 报告.pdf        打开窗口并载入这个文件
 
 `-h`/`--help` 跟随当前设置的语言，`--help-cn` 和 `--help-en` 可以只对本次运行强制切换。
 
-## 资源管理器右键菜单（仅 Windows，仅 `.pdf`）
+## 右键菜单（只对 `.pdf` 生效）
 
-```bat
-pdf_compress.exe --install-menu      rem 第一次需要管理员权限
-pdf_compress.exe --uninstall-menu
+```sh
+pdf_compress --install-menu        # Windows 第一次需要管理员权限
+pdf_compress --uninstall-menu
 ```
 
-安装包里有一项默认勾选的任务。点菜单项会用图形界面打开你右键的那个文件（多选则一起带过去）。
+Windows 的安装包里有一项默认勾选的任务。点菜单项会用图形界面打开你右键的那个文件（多选则一起
+带过去）。Linux 和 macOS 上没有图形界面，菜单项直接按设置文件里的目标大小压缩。
+
+下面按平台说明各自注册了什么。
+
+### Windows
 
 Windows 11 的**一级**菜单只认一种注册方式：实现 `IExplorerCommand` 的原生 COM DLL，装在一个
 **MSIX 稀疏包**里，通过 `windows.fileExplorerContextMenus` 声明接管 `.pdf`。这套东西在 `shell/`：
@@ -218,8 +223,52 @@ Windows 10 和"显示更多选项"子菜单也能用。
   一次与安全相关的改动（往机器级信任库加了一张证书），也是进一级菜单必须付的代价。
 - 这个包还被**嵌在可执行文件里**（`src/shell_payload.cpp`），所以便携版自己就能装菜单，旁边不用
   带任何文件；如果 exe 旁边正好有 `pdf_compress_shell.msix` 和 `.cer`，则优先用旁边那两个。
-- Linux/macOS 上 `--install-menu` 会提示只支持 Windows。
 - 菜单项没立刻出现就重启资源管理器，或者注销再登录：外壳会缓存动词。
+
+### Linux
+
+```sh
+pdf_compress --install-menu        # 不需要 root，全部写进 $HOME
+pdf_compress --uninstall-menu
+```
+
+Linux 没有统一的"注册右键菜单"机制，所以只给有这机制的文件管理器各写一份。不装系统目录，也不
+覆盖任何已有文件：
+
+| 文件管理器 | 菜单项出现在 | 写到哪里 |
+|---|---|---|
+| Nautilus（GNOME）、Caja（MATE） | “脚本”子菜单 | `~/.local/share/nautilus/scripts/<名字>`、`~/.local/share/caja/scripts/<名字>` |
+| Nemo（Cinnamon） | 直接是右键菜单里的一项 | `~/.local/share/nemo/actions/pdf-compress.nemo_action` |
+| Dolphin（KDE） | “动作”子菜单 | `~/.local/share/kio/servicemenus/pdf-compress.desktop` |
+
+它们都调用同一个 shell 脚本 `~/.local/share/pdf-compress/compress-pdf.sh`：目标大小从
+`settings.ini` 读（和图形界面共用同一个文件，读不到用 8 MB），把选中的 `.pdf` 逐个压完，然后
+用 `zenity` / `kdialog` / `notify-send`（哪个在就用哪个）报一条结果，完整日志在
+`~/.cache/pdf-compress/menu.log`。
+
+Thunar 故意不支持：它的自定义动作全放在一个 `uca.xml` 里，要装就得整份替换，那是用户的文件，
+不该动。
+
+### macOS
+
+```sh
+pdf_compress --install-menu        # 不需要 sudo
+pdf_compress --uninstall-menu
+```
+
+`--install-menu` 会在 `~/Library/Services/` 里写一个**快速操作**（Quick Action），Finder 的右键
+菜单“快速操作”里就能看到：
+
+```
+~/Library/Services/Compress with PDF Compressor.workflow/Contents/Info.plist      声明只对 .pdf 出现
+~/Library/Services/Compress with PDF Compressor.workflow/Contents/document.wflow  调用脚本
+~/Library/Application Support/pdf-compress/compress-pdf.sh                        真正干活
+```
+
+行为与 Linux 那套一致（同一个设置文件、同一份日志）。真的 Finder 扩展需要 Xcode 工程和代码签名，
+而快速操作是能跟着单个二进制一起发布的方案。如果 Finder 里没列出来，到“系统设置 → 键盘 →
+键盘快捷键 → 服务”里勾一下。
+
 
 ## 安装包（Windows）
 

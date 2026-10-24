@@ -11,7 +11,7 @@ built on [MuPDF](https://mupdf.com/), with three faces:
 |---|---|
 | **Command line** | `pdf_compress input.pdf 5` — aim at 5 MB. Windows, Linux and macOS |
 | **Graphical interface** | Windows only. Hand-drawn Win32 + Direct2D, no GUI toolkit, no runtime to install |
-| **Explorer context menu** | Windows 11 top-level menu for `.pdf` files — not hidden under *Show more options* |
+| **Context menu** | Windows 11 top-level menu (not hidden under *Show more options*) and Windows 10, plus Nautilus/Caja, Nemo, Dolphin and the macOS Quick Actions menu — `.pdf` files only |
 
 Two kinds of compression are combined: **lossless optimisation** (a cleaned-up, repacked copy) and
 **lossy rendering** (every page re-rendered as JPEG at a resolution the search chooses). The tool
@@ -108,7 +108,7 @@ explains and exits with code 2.
 | `--lang {zh,en}` | language for this run only (not saved) |
 | `-h, --help` | help, in the currently configured language |
 | `--help-cn`, `--help-en` | force Chinese (`--help-zh` is the same thing) or English help |
-| `--install-menu` / `--uninstall-menu` | add / remove the Explorer context menu (Windows only, needs administrator rights) |
+| `--install-menu` / `--uninstall-menu` | add / remove the context menu (Windows asks for administrator rights once, for the certificate; Linux and macOS write into the home directory) |
 | `-V, --version` | version number |
 
 Two more flags exist for internal use: `--quiet` suppresses the progress output of
@@ -199,15 +199,20 @@ The language is chosen in this order:
 
 `-h`/`--help` follow the configured language; `--help-cn` and `--help-en` override it for one run.
 
-## Explorer context menu (Windows only, `.pdf` files only)
+## Context menu for `.pdf` files
 
-```bat
-pdf_compress.exe --install-menu      rem needs administrator rights the first time
-pdf_compress.exe --uninstall-menu
+```sh
+pdf_compress --install-menu        # Windows: needs administrator rights the first time
+pdf_compress --uninstall-menu
 ```
 
-The installer has a task for this, **checked by default**. Selecting the entry opens the window with
-the file you right-clicked (several files at once bring all of them along).
+The Windows installer has a task for this, **checked by default**. Selecting the entry opens the window
+with the file you right-clicked (several files at once bring all of them along). On Linux and macOS,
+where there is no window, the entry compresses straight to the target size from `settings.ini`.
+
+The sections below describe what each platform actually registers.
+
+### Windows
 
 The Windows 11 *top-level* menu accepts exactly one kind of registration: a native COM DLL
 implementing `IExplorerCommand`, shipped inside an **MSIX sparse package** that declares
@@ -241,8 +246,52 @@ Windows 10 and the *Show more options* submenu keep working.
   certificate lands in a machine-wide trust store — and it is the price of a top-level menu entry.
 - The package is **embedded in the executable** as `src/shell_payload.cpp`, so the portable build can
   install the menu by itself. If `pdf_compress_shell.msix` and `.cer` sit next to the exe, those win.
-- On Linux/macOS `--install-menu` reports that the context menu is Windows-only.
 - If the entry does not appear, restart File Explorer or sign out and back in: the shell caches verbs.
+
+### Linux
+
+```sh
+pdf_compress --install-menu        # no root needed, everything goes into $HOME
+pdf_compress --uninstall-menu
+```
+
+Linux has no single "register a context menu" mechanism, so the entry is written for the file managers
+that do have one. Nothing is installed system-wide and nothing is overwritten:
+
+| File manager | Where the entry appears | What gets written |
+|---|---|---|
+| Nautilus (GNOME), Caja (MATE) | *Scripts* submenu | `~/.local/share/nautilus/scripts/<name>`, `~/.local/share/caja/scripts/<name>` |
+| Nemo (Cinnamon) | the context menu itself | `~/.local/share/nemo/actions/pdf-compress.nemo_action` |
+| Dolphin (KDE) | *Actions* submenu | `~/.local/share/kio/servicemenus/pdf-compress.desktop` |
+
+All of them call the same shell script, `~/.local/share/pdf-compress/compress-pdf.sh`, which reads the
+target size from `settings.ini` (the same file the graphical interface uses, falling back to 8 MB),
+compresses every selected `.pdf` and reports back through `zenity`, `kdialog` or `notify-send` —
+whichever is present — with the full log in `~/.cache/pdf-compress/menu.log`.
+
+Thunar is not supported on purpose: its custom actions live in one `uca.xml` that would have to be
+replaced as a whole, which is not acceptable for a file we do not own.
+
+### macOS
+
+```sh
+pdf_compress --install-menu        # no sudo needed
+pdf_compress --uninstall-menu
+```
+
+`--install-menu` writes a **Quick Action** into `~/Library/Services/`, which is what Finder lists under
+*Quick Actions* in the right-click menu:
+
+```
+~/Library/Services/Compress with PDF Compressor.workflow/Contents/Info.plist     declares .pdf only
+~/Library/Services/Compress with PDF Compressor.workflow/Contents/document.wflow  runs the script
+~/Library/Application Support/pdf-compress/compress-pdf.sh                       does the work
+```
+
+The workflow and the script work exactly like the Linux ones (same settings file, same log). A real
+Finder Sync extension would need an Xcode project and code signing, so a Quick Action is the version
+that can ship as a single binary. If Finder does not list it, enable it in *System Settings → Keyboard →
+Keyboard Shortcuts → Services*.
 
 ## Installer (Windows)
 
